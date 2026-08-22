@@ -158,6 +158,26 @@ const publishRoom = (room) => broadcast(room, S2C.ROOM, { room: room.toJSON() })
 /** Countdown timers, so a room leaving mid-count does not start a ghost round. */
 const countdowns = new Map();
 
+/**
+ * Watchdogs that end a round nobody finished.
+ *
+ * A round ends when every player reports FINISH. A client that never reports —
+ * a crashed tab, a song that failed to load, a laptop closed mid-verse —
+ * leaves the room in `playing` forever, and READY is ignored in that state, so
+ * the room is dead to everyone in it until the server restarts. Observed
+ * exactly that way in testing, with a song whose video would not load.
+ *
+ * Any client can therefore brick a room by picking, readying and going quiet,
+ * which is a denial of service that needs no malice to trigger.
+ */
+const roundTimers = new Map();
+/**
+ * Beyond the song's own length: buffering, a late start, a paused tab.
+ * Overridable so a test can prove the watchdog without waiting a minute and a
+ * half for it.
+ */
+const ROUND_GRACE_MS = Number(process.env.ROUND_GRACE_MS ?? 90_000);
+
 function cancelCountdown(roomId) {
   const timer = countdowns.get(roomId);
   if (timer) {
@@ -173,6 +193,24 @@ function cancelCountdown(roomId) {
  * song can still play it — the room is the distribution mechanism, and a chart
  * is small enough that this costs nothing.
  */
+/** End the round now, whatever state its players are in. */
+function endRoundNow(room, reason) {
+  clearRoundTimer(room.id);
+  if (room.round.state !== 'playing' && room.round.state !== 'countdown') return;
+  const awarded = room.endRound();
+  broadcast(room, S2C.ROUND, { round: room.round, awarded });
+  if (reason) broadcast(room, S2C.CHAT, { system: true, text: reason });
+  publishRoom(room);
+}
+
+function clearRoundTimer(roomId) {
+  const timer = roundTimers.get(roomId);
+  if (timer) {
+    clearTimeout(timer);
+    roundTimers.delete(roomId);
+  }
+}
+
 function startCountdown(room) {
   if (countdowns.has(room.id)) return;
 
@@ -188,6 +226,14 @@ function startCountdown(room) {
       if (room.isEmpty()) return;
       broadcast(room, S2C.ROUND, { round: room.beginPlaying() });
       publishRoom(room);
+      clearRoundTimer(room.id);
+      roundTimers.set(
+        room.id,
+        setTimeout(
+          () => endRoundNow(room, 'That round ran over — back to the lobby.'),
+          room.chartDurationMs() + ROUND_GRACE_MS,
+        ),
+      );
     }, COUNTDOWN_MS),
   );
 }
@@ -265,6 +311,9 @@ wss.on('connection', (socket) => {
         socket.roomId = room.id;
         const player = room.addPlayer(socket.playerId, message.name);
         broadcast(room, S2C.CHAT, { system: true, text: `${player.name} joined` });
+        // Hand the newcomer whatever the room is already playing, so they can
+        // see and select it rather than staring at their own charts.
+        if (room.chart) send(socket, S2C.SONG, { chart: room.chart, pickedBy: room.pickedBy });
         publishRoom(room);
         break;
       }
@@ -308,7 +357,15 @@ wss.on('connection', (socket) => {
           send(socket, S2C.ERROR, { error: 'That chart is implausibly long.' });
           break;
         }
-        room.setChart(chart);
+        const picker = room.players.get(socket.playerId);
+        room.setChart(chart, picker?.name ?? 'someone');
+        // The whole chart, once, to everyone: this is how a song charted by one
+        // person becomes playable by the room.
+        broadcast(room, S2C.SONG, { chart: room.chart, pickedBy: room.pickedBy });
+        broadcast(room, S2C.CHAT, {
+          system: true,
+          text: `${picker?.name ?? 'someone'} picked ${chart?.song?.title ?? 'a song'}`,
+        });
         publishRoom(room);
         break;
       }
@@ -328,6 +385,7 @@ wss.on('connection', (socket) => {
         const room = rooms.get(socket.roomId);
         const everyone = room.markFinished(socket.playerId);
         if (everyone) {
+          clearRoundTimer(room.id);
           const awarded = room.endRound();
           broadcast(room, S2C.ROUND, { round: room.round, awarded });
         }
@@ -361,10 +419,14 @@ wss.on('connection', (socket) => {
     room.removePlayer(socket.playerId);
     if (player) broadcast(room, S2C.CHAT, { system: true, text: `${player.name} left` });
 
-    if (room.isEmpty()) cancelCountdown(room.id);
+    if (room.isEmpty()) {
+      cancelCountdown(room.id);
+      clearRoundTimer(room.id);
+    }
     // The last player still in a round finishes it, rather than leaving the
     // room stuck mid-song because whoever else was playing closed their tab.
     else if (room.round.state === 'playing' && room.markFinished(player?.id ?? '')) {
+      clearRoundTimer(room.id);
       broadcast(room, S2C.ROUND, { round: room.endRound() });
     }
 

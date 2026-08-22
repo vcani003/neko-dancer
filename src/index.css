@@ -171,6 +171,7 @@ kbd {
 }
 
 .board__ready { color: var(--green); font-size: 0.62rem; letter-spacing: 0.06em; }
+.board__you { color: var(--muted); font-size: 0.62rem; letter-spacing: 0.06em; }
 
 /* ---- the screen on the wall ---- */
 

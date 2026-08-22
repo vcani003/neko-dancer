@@ -63,10 +63,71 @@ what it does.
 
 ---
 
+## 3. The other player never got the song, and ready never started anything
+
+**Found by:** Vero, first two-machine session.
+
+> "The other user is not able to get the song when both hit 'ready'. The other
+> user does not see the song i set available. that should be shareable on my
+> network"
+
+Two separate bugs behind one report.
+
+**The song was never actually sent.** The room broadcast carried a *summary* of
+the chosen song — title, id, arrow count — while the menu was rendered from the
+local chart store. So the other player saw their own charts and nothing else,
+and the chart itself only travelled later, bundled with the countdown. A song
+you cannot see is a song you cannot agree to play.
+
+Fixed by giving the chart its own message, sent when the pick changes and to
+anyone who joins afterwards. Deliberately *not* folded into the room broadcast:
+that goes out on every score update, ten times a second per player, and a chart
+is tens of kilobytes. The same data in the wrong message is a different feature.
+
+**Ready could never complete.** The ready button sent the pick as well:
+
+```tsx
+if (!me?.ready) room.send(C2S.PICK_SONG, { chart });
+room.send(C2S.READY, { ready: !me?.ready });
+```
+
+and picking un-readies the room, correctly — agreeing to play one song is not
+agreeing to play whatever it was changed to. So the second player to press
+ready silently un-readied the first, `everyoneReady()` was never true, and the
+countdown could not fire however many times either of them pressed it. With one
+player it worked perfectly, which is why it survived to a two-machine test.
+
+Fixed by making picking its own action. The button now sends `ready` and only
+`ready` — verified by watching the socket rather than by reading the code.
+
+**Why no test caught it.** Every test spoke to `Room` directly, and `Room` was
+right the whole time. There is now a suite that opens real sockets and speaks
+the protocol, and all four of its cases fail against the old server.
+
+---
+
+## 4. A room could get stuck mid-song forever
+
+**Found by:** testing the fix above with a deliberately broken video id.
+
+The song never loaded, so that client never reported FINISH, so the round
+stayed in `playing`. `READY` is ignored in that state — reasonably, since you
+should not be able to re-ready mid-song — which left every player in the room
+unable to do anything at all until the server was restarted.
+
+No malice required, and that is what makes it worth fixing rather than noting:
+any player can brick a room for everyone by picking a song, readying, and
+closing their laptop.
+
+Rounds now carry a watchdog — the song's own length plus ninety seconds — after
+which the round ends itself and the room returns to the lobby.
+
+---
+
 ## Pattern
 
-Both bugs are the same shape: **a global listener that did not ask where the
-event came from.**
+The first two are the same shape: **a global listener that did not ask where
+the event came from.**
 
 One swallowed keystrokes meant for a text field. The other swallowed clicks
 meant for a button. Neither was reachable from any unit test, because both
@@ -76,3 +137,9 @@ keyboard, hit-testing for the mouse.
 The tests that exist are good at the engine and useless here. Finding these
 needed someone typing their name into a chat box, which is a thing a person
 does and a test suite never will.
+
+The later two share a different shape: **logic that was correct alone and wrong
+in company.** `Room` readied and un-readied exactly as intended; the client
+called it in an order that could never converge. One player never revealed it,
+because with one player every order works. Some bugs only exist between
+components, and only a second machine will show them to you.

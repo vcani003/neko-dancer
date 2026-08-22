@@ -53,6 +53,7 @@ export class Room {
      * charts are small JSON rather than anything heavier.
      */
     this.chart = null;
+    this.pickedBy = null;
   }
 
   addPlayer(id, name) {
@@ -137,10 +138,18 @@ export class Room {
     return awarded;
   }
 
-  setChart(chart) {
+  /**
+   * Set what the room will play.
+   *
+   * Un-readies everyone, because agreeing to play one thing is not agreeing to
+   * play whatever it was changed to. That is only safe because picking is a
+   * deliberate action of its own — when it was bundled into the ready button,
+   * every player who readied wiped out everyone before them and the room could
+   * never reach agreement at all.
+   */
+  setChart(chart, pickedBy = null) {
     this.chart = chart ?? null;
-    // Picking a new song un-readies everyone: agreeing to play one thing is
-    // not agreeing to play whatever it was changed to.
+    this.pickedBy = pickedBy;
     for (const player of this.players.values()) player.ready = false;
   }
 
@@ -191,6 +200,18 @@ export class Room {
     return this.round;
   }
 
+  /**
+   * How long the chosen song runs, by its last arrow.
+   *
+   * Used to bound a round rather than to time one — the clients own playback.
+   */
+  chartDurationMs() {
+    const arrows = this.chart?.arrows;
+    if (!Array.isArray(arrows) || arrows.length === 0) return 0;
+    const last = arrows[arrows.length - 1]?.timeMs;
+    return Number.isFinite(last) ? last : 0;
+  }
+
   markFinished(id) {
     const player = this.players.get(id);
     if (player) player.finished = true;
@@ -210,8 +231,15 @@ export class Room {
       playlist: this.playlist,
       round: this.round,
       songChooser: this.songChooser(),
+      // A summary only. The chart itself travels in its own message, because
+      // this object is broadcast many times a second during a round.
       song: this.chart
-        ? { id: this.chart.song.id, title: this.chart.song.title, arrows: this.chart.arrows.length }
+        ? {
+            id: this.chart.song.id,
+            title: this.chart.song.title,
+            arrows: this.chart.arrows.length,
+            pickedBy: this.pickedBy,
+          }
         : null,
     };
   }

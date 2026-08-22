@@ -28,6 +28,7 @@ import { ClickTrackAdapter } from './playback/ClickTrackAdapter.ts';
 import { YouTubeAdapter } from './playback/YouTubeAdapter.ts';
 import type { PlaybackAdapter } from './playback/PlaybackAdapter.ts';
 import { LocalChartStore, chartKey, type StoredChart } from './charts/ChartStore.ts';
+import { validateChart } from './charts/validator.ts';
 import AddSong from './ui/AddSong.tsx';
 import SectionEditor from './ui/SectionEditor.tsx';
 import { flatPlan, type SongPlan } from './charts/SongPlan.ts';
@@ -116,18 +117,59 @@ export default function App() {
     [saved],
   );
   /**
-   * A chart handed over by the room, which wins while a round is running.
+   * The room's song, which wins over any local selection while connected.
    *
-   * The room is the distribution mechanism: whoever picked the song sent their
-   * chart with it, so someone who has never charted this song can still play
-   * it. Charts are small JSON, which is what makes that free.
+   * The room is the distribution mechanism: whoever picks sends their chart
+   * with it, so someone who has never charted this song can still play it.
+   * Charts are small JSON, which is what makes that free.
    */
   const [roomChart, setRoomChart] = useState<Chart | null>(null);
+
+  /**
+   * Take the room's song — after checking it.
+   *
+   * This chart came from another player over the network, so it is data and
+   * not a promise. It drives the engine and the renderer, and an arrow with a
+   * missing lane or a NaN time would break both. Validating here means a bad
+   * chart is refused at the door rather than found mid-song.
+   *
+   * Accepted charts are also saved locally, so a song someone else charted is
+   * yours to replay afterwards.
+   */
+  const acceptRoomChart = useCallback(
+    (incoming: unknown, authoredBy?: string) => {
+      const check = validateChart(incoming);
+      if (!check.ok) {
+        // Loudly, because the alternative is a player pressing ready against a
+        // song that silently never arrived.
+        setError(`That song could not be loaded: ${check.errors[0]}`);
+        return;
+      }
+      const next = incoming as Chart;
+      setRoomChart(next);
+      setSelectedKey(chartKey(next));
+      void store.put(next, authoredBy).then(refreshCharts).catch(() => {});
+    },
+    [store, refreshCharts],
+  );
 
   const chart = useMemo(
     () => roomChart ?? allCharts.find((c) => chartKey(c) === selectedKey) ?? TUTORIAL_CHART,
     [roomChart, allCharts, selectedKey],
   );
+
+  /** Whatever is actually loaded, however it got here. */
+  const activeKey = useMemo(() => chartKey(chart), [chart]);
+
+  /**
+   * The list to show. Normally just what this browser holds — but a chart the
+   * room sent belongs in it immediately, without waiting on the save that
+   * follows, and whether or not that save succeeds.
+   */
+  const songChoices = useMemo(() => {
+    if (!roomChart || allCharts.some((c) => chartKey(c) === activeKey)) return allCharts;
+    return [roomChart, ...allCharts];
+  }, [roomChart, allCharts, activeKey]);
 
   /**
    * Admin unlocks editing a song's shape.
@@ -305,7 +347,7 @@ export default function App() {
     if (!signal) return;
 
     if (signal.round.state === 'countdown') {
-      if (signal.chart) setRoomChart(signal.chart as Chart);
+      if (signal.chart) acceptRoomChart(signal.chart);
       const elapsed = performance.now() - signal.receivedAtMs;
       const remaining = Math.max(0, (signal.round.countdownMs ?? 3000) - elapsed);
       setCountdownEndsAt(performance.now() + remaining);
@@ -321,7 +363,16 @@ export default function App() {
     if (signal.round.state === 'results') {
       setCountdownEndsAt(null);
     }
-  }, [room.signal]);
+  }, [room.signal, acceptRoomChart]);
+
+  /**
+   * The room picked a song. Everyone plays it, including whoever has never
+   * heard of it — the chart travels with the pick.
+   */
+  useEffect(() => {
+    if (!room.song) return;
+    acceptRoomChart(room.song.chart, room.song.pickedBy ?? undefined);
+  }, [room.song, acceptRoomChart]);
 
   const start = useCallback(async () => {
     setError(null);
@@ -393,6 +444,12 @@ export default function App() {
   useEffect(() => () => adapterRef.current?.dispose(), []);
 
   const me = room.room?.players.find((p) => p.id === room.playerId);
+  const waitingOn =
+    room.room && room.room.players.length > 1 && room.room.round.state === 'lobby'
+      ? room.room.players
+          .filter((p) => !p.ready)
+          .map((p) => (p.id === room.playerId ? `${p.name} (you)` : p.name))
+      : [];
 
   useEffect(() => {
     const roster = room.room?.players ?? [];
@@ -450,16 +507,31 @@ export default function App() {
           <div className="overlay">
             <div className="panel">
               <h1>neko <span>dancer</span></h1>
-              <p className="hint">{chart.song.title} · {chart.arrows.length} arrows</p>
+              <p className="hint">
+                {chart.song.title} · {chart.arrows.length} arrows
+                {room.room?.song?.pickedBy ? ` · picked by ${room.room.song.pickedBy}` : ''}
+              </p>
 
               <div className="songlist">
-                {allCharts.map((c) => {
+                {songChoices.map((c) => {
                   const key = chartKey(c);
                   return (
                     <button
                       key={key}
-                      className={`songrow ${key === selectedKey ? 'is-active' : ''}`}
-                      onClick={() => setSelectedKey(key)}
+                      className={`songrow ${key === activeKey ? 'is-active' : ''}`}
+                      onClick={() => {
+                        // Clear first so the click feels instant; if we are in
+                        // a room the server echoes the pick straight back and
+                        // sets it again, for everyone at once.
+                        setRoomChart(null);
+                        setSelectedKey(key);
+                        // Picking is its own action, deliberately not bundled
+                        // into "I'm ready". Picking un-readies the room — so
+                        // when the two were one button, every player who
+                        // readied wiped out everyone before them and the
+                        // countdown could never fire.
+                        if (room.connection === 'open') room.send(C2S.PICK_SONG, { chart: c });
+                      }}
                     >
                       <span>
                         <span className="songrow__title">{c.song.title}</span>
@@ -489,12 +561,7 @@ export default function App() {
                   </span>
                   <button
                     className={me?.ready ? '' : 'button--primary'}
-                    onClick={() => {
-                      // Send the chart with the pick, so everyone plays this
-                      // one — including anyone who has never charted it.
-                      if (!me?.ready) room.send(C2S.PICK_SONG, { chart });
-                      room.send(C2S.READY, { ready: !me?.ready });
-                    }}
+                    onClick={() => room.send(C2S.READY, { ready: !me?.ready })}
                   >
                     {me?.ready ? 'Not ready' : "I'm ready"}
                   </button>
@@ -505,6 +572,15 @@ export default function App() {
                 <p className="hint" style={{ fontSize: '0.72rem' }}>
                   Waiting for someone to join. Everyone hits ready, then the song starts
                   for all of you at once.
+                </p>
+              )}
+
+              {/* Naming who is holding things up. Every open tab is a player,
+                  so "2 / 3 ready" is a mystery until you can see that the
+                  third one is a window you forgot about. */}
+              {waitingOn.length > 0 && (
+                <p className="hint" style={{ fontSize: '0.72rem' }}>
+                  Waiting on {waitingOn.join(', ')}.
                 </p>
               )}
 
@@ -710,6 +786,10 @@ export default function App() {
                   <span className="board__rank mono">{player.rank}</span>
                   <span className="board__name">
                     {player.name}
+                    {/* Everyone who never typed a name is called "neko", so
+                        without this the list is three identical rows and there
+                        is no way to tell which ready is yours. */}
+                    {player.id === room.playerId && <span className="board__you"> (you)</span>}
                     {player.ready && room.room?.round.state === 'lobby' && (
                       <span className="board__ready"> ready</span>
                     )}

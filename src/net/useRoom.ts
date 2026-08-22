@@ -23,6 +23,14 @@ export const C2S = {
 export const S2C = {
   WELCOME: 'welcome',
   ROOM: 'room',
+  /**
+   * The room's chosen song, in full, sent whenever it changes.
+   *
+   * Separate from ROOM because ROOM is broadcast on every score update — ten
+   * times a second per player — and a chart is tens of kilobytes. Sending it
+   * only on change is the difference between a few KB a minute and megabytes.
+   */
+  SONG: 'song',
   CHAT: 'chat',
   ROUND: 'round',
   ERROR: 'error',
@@ -53,7 +61,17 @@ export interface RoomState {
   playlist: Array<{ id: string; title: string; by: string }>;
   round: RoomRound;
   songChooser: string | null;
-  song: { id: string; title: string; arrows: number } | null;
+  song: { id: string; title: string; arrows: number; pickedBy: string | null } | null;
+}
+
+/**
+ * The room's song as it arrived: a chart from another player, and therefore
+ * untrusted. Deliberately typed `unknown` — the consumer validates it before
+ * anything plays it.
+ */
+export interface RoomSong {
+  chart: unknown;
+  pickedBy: string | null;
 }
 
 export interface ChatLine {
@@ -98,6 +116,7 @@ export function useRoom(name: string, roomId: string, enabled: boolean) {
   const [chat, setChat] = useState<ChatLine[]>([]);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [signal, setSignal] = useState<RoundSignal | null>(null);
+  const [song, setSong] = useState<RoomSong | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const retryRef = useRef<number | null>(null);
@@ -140,6 +159,12 @@ export function useRoom(name: string, roomId: string, enabled: boolean) {
 
         if (message.type === S2C.WELCOME) setPlayerId(String(message.playerId));
         else if (message.type === S2C.ROOM) setRoom(message.room as RoomState);
+        else if (message.type === S2C.SONG) {
+          setSong({
+            chart: message.chart,
+            pickedBy: message.pickedBy == null ? null : String(message.pickedBy),
+          });
+        }
         else if (message.type === S2C.ROUND) {
           setSignal({
             round: message.round as RoomRound,
@@ -191,5 +216,5 @@ export function useRoom(name: string, roomId: string, enabled: boolean) {
     }
   }, []);
 
-  return { connection, room, chat, playerId, signal, send };
+  return { connection, room, chat, playerId, signal, song, send };
 }

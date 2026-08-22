@@ -74,6 +74,24 @@ The lesson generalises. **A limit set without measuring the traffic it must
 allow is a guess**, and a guess that rejects normal use is worse than no limit
 at all — it fails closed, loudly, on the happy path.
 
+**A room any player could brick.** A round ended only when every player
+reported finishing. A client that never reported — a crashed tab, a song that
+failed to load, or simply someone who picked a song, readied, and walked away —
+left the room in `playing` permanently, and `READY` is ignored in that state.
+Everyone else in the room was locked out until the server restarted.
+
+Denial of service with no attacker required, which is the kind worth fixing:
+the accidental version happens weekly and the deliberate one costs nothing.
+Rounds now carry a watchdog — the song's length plus ninety seconds — after
+which the round ends itself and the room returns to the lobby.
+
+**Charts from other players are validated before use.** The room is how a song
+reaches someone who has never charted it, which means a chart arriving over the
+network drives another player's engine and renderer. It is checked against the
+same validator as anything loaded from storage, and a chart that fails is
+refused with a visible message rather than silently ignored. The server
+independently bounds the arrow count, so neither side relies on the other.
+
 **Duplicate joins.** One room per socket. Rejoining without leaving left a
 ghost player behind and let one connection hold several seats.
 

@@ -20,6 +20,15 @@ export const C2S = {
 export const S2C = {
   WELCOME: 'welcome',
   ROOM: 'room',
+  /**
+   * The room's chart, in full.
+   *
+   * Its own message rather than part of ROOM: room state is broadcast on every
+   * score update, ten times a second per player, and a chart is tens of
+   * kilobytes. Sending it only when it changes is the difference between a few
+   * KB a minute and a few megabytes.
+   */
+  SONG: 'song',
   CHAT: 'chat',
   ROUND: 'round',
   ERROR: 'error',
