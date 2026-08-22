@@ -99,7 +99,7 @@ describe('ranking and rewards', () => {
     room.addPlayer('b', 'Friend');
     room.updateScore('a', { score: 500 });
     room.updateScore('b', { score: 2400 });
-    expect(room.scoreboard().map((p) => p.name)).toEqual(['Friend', 'Vero']);
+    expect(room.scoreboard().map((p: { name: string }) => p.name)).toEqual(['Friend', 'Vero']);
     expect(room.songChooser()).toBe('b');
   });
 
