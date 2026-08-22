@@ -1,0 +1,8 @@
+node_modules
+dist
+.DS_Store
+*.local
+*.tsbuildinfo
+
+# Player-supplied audio. Store charts, not recordings.
+public/audio/
