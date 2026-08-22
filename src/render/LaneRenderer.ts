@@ -13,6 +13,7 @@ import { Application, Container, Graphics, Text } from 'pixi.js';
 import type { ActiveArrow, Judgment } from '../engine/LaneJudge.ts';
 import { LANES, LANE_INDEX, type Lane } from '../charts/schema.ts';
 import { CatDancer } from './CatDancer.ts';
+import { createWalker, depthScale, step, type Walker } from './Wander.ts';
 
 const LANE_COLOUR: Record<Lane, number> = {
   left: 0xf472b6,
@@ -38,10 +39,31 @@ const JUDGMENT_COLOUR: Record<Judgment, number> = {
  */
 export const DEFAULT_LEAD_MS = 1600;
 
-/** Where the receptor sits, as a fraction of height from the top. */
-const RECEPTOR_Y = 0.82;
+/**
+ * The lane strip: a narrow column down the left, not the whole screen.
+ *
+ * The arrows are the thing being read, but they are not the thing being
+ * watched. Giving them a column leaves the rest of the room to the cats, which
+ * is the point of a dancing game — you play in the corner of your eye and look
+ * at the party.
+ */
+const LANE_STRIP_WIDTH = 0.26;
+const LANE_STRIP_MAX_PX = 320;
 
-const ARROW_SIZE = 0.5; // fraction of lane width
+/** Where the receptor sits within the strip, as a fraction of its height. */
+const RECEPTOR_Y = 0.78;
+
+const ARROW_SIZE = 0.46; // fraction of lane width
+
+export interface RoomPlayerView {
+  id: string;
+  name: string;
+  isMe: boolean;
+  /** The lane they last hit, so their cat poses. */
+  lane?: Lane | null;
+  hitAtMs?: number;
+  missAtMs?: number;
+}
 
 interface Popup {
   text: Text;
@@ -64,6 +86,10 @@ export interface LaneRenderState {
   nowMs: number;
   /** Tempo for the cat's idle bob. Zero means stand still. */
   bpm?: number;
+  /** Everyone in the room, including the local player. */
+  players?: readonly RoomPlayerView[];
+  /** Cats stop strolling and dance in place while a round runs. */
+  roundRunning?: boolean;
 }
 
 const POPUP_MS = 520;
@@ -71,11 +97,16 @@ const FLASH_MS = 260;
 
 export class LaneRenderer {
   private app: Application | null = null;
+  private roomLayer = new Container();
   private fieldLayer = new Container();
   private catLayer = new Container();
   private arrowLayer = new Container();
   private effectLayer = new Container();
-  private cat = new CatDancer();
+  private roomGraphics = new Graphics();
+
+  /** One cat and one walker per player, kept between frames. */
+  private cats = new Map<string, { dancer: CatDancer; walker: Walker; label: Text }>();
+  private lastFrameMs = 0;
 
   /** What the cat is reacting to. */
   private lastLane: Lane | null = null;
@@ -112,8 +143,14 @@ export class LaneRenderer {
     container.appendChild(app.canvas);
     // The cat sits behind the arrows: she is the reason to look at the screen,
     // but never the thing in the way of reading one.
-    app.stage.addChild(this.fieldLayer, this.catLayer, this.arrowLayer, this.effectLayer);
-    this.catLayer.addChild(this.cat.view);
+    app.stage.addChild(
+      this.roomLayer,
+      this.catLayer,
+      this.fieldLayer,
+      this.arrowLayer,
+      this.effectLayer,
+    );
+    this.roomLayer.addChild(this.roomGraphics);
     this.fieldLayer.addChild(this.fieldGraphics);
     this.arrowLayer.addChild(this.arrowGraphics);
 
@@ -132,8 +169,13 @@ export class LaneRenderer {
     return this.app !== null;
   }
 
+  /** The strip the lanes live in: left edge, full height, capped width. */
+  private stripWidth(): number {
+    return Math.min(this.width * LANE_STRIP_WIDTH, LANE_STRIP_MAX_PX);
+  }
+
   private laneWidth(): number {
-    return this.width / LANES.length;
+    return this.stripWidth() / LANES.length;
   }
 
   private laneCentreX(lane: Lane): number {
@@ -147,8 +189,12 @@ export class LaneRenderer {
   render(state: LaneRenderState): void {
     if (!this.app) return;
     this.resize();
+    const deltaMs = this.lastFrameMs ? Math.min(200, state.nowMs - this.lastFrameMs) : 16;
+    this.lastFrameMs = state.nowMs;
+
+    this.drawRoom(state);
+    this.drawCats(state, deltaMs);
     this.drawField(state);
-    this.drawCat(state);
     this.drawArrows(state);
     this.updateEffects(state.nowMs);
   }
@@ -168,7 +214,7 @@ export class LaneRenderer {
 
       // Lane column, barely there — it separates without competing.
       g.rect(cx - laneWidth / 2, 0, laneWidth, this.height)
-        .fill({ color: colour, alpha: held ? 0.07 : 0.025 });
+        .fill({ color: colour, alpha: held ? 0.09 : 0.03 });
 
       // Receptor: the thing an arrow is travelling toward. Lit while held, so
       // a player can see their own input independently of whether it scored.
@@ -181,8 +227,12 @@ export class LaneRenderer {
     }
 
     // The receptor line itself, so the row reads as one target rather than four.
-    g.moveTo(0, receptorY).lineTo(this.width, receptorY)
-      .stroke({ width: 1, color: 0xffffff, alpha: 0.12 });
+    g.moveTo(0, receptorY).lineTo(this.stripWidth(), receptorY)
+      .stroke({ width: 1, color: 0xffffff, alpha: 0.14 });
+
+    // A soft edge where the strip ends and the room begins.
+    g.moveTo(this.stripWidth(), 0).lineTo(this.stripWidth(), this.height)
+      .stroke({ width: 1, color: 0xffffff, alpha: 0.07 });
   }
 
   private drawArrows(state: LaneRenderState): void {
@@ -237,35 +287,120 @@ export class LaneRenderer {
   }
 
   /**
-   * The cat, on the stage between the receptors and the bottom edge.
+   * The room: a floor the cats stand on, to the right of the lane strip.
    *
-   * Below the receptor line on purpose: that strip is otherwise dead space, and
-   * putting her there means she is visible without ever sitting under a falling
-   * arrow the player is trying to read.
+   * Just enough of a horizon to read as a place rather than a background. The
+   * cats supply the interest; the room only has to stop them floating.
    */
-  private drawCat(state: LaneRenderState): void {
-    const stageTop = this.receptorY();
-    const available = this.height - stageTop;
-    if (available < 40) {
-      this.cat.view.visible = false;
-      return;
+  private drawRoom(state: LaneRenderState): void {
+    const g = this.roomGraphics;
+    g.clear();
+
+    const left = this.stripWidth();
+    const width = this.width - left;
+    if (width <= 0) return;
+
+    const horizon = this.height * 0.42;
+
+    // Back wall, then floor, with the join left visible.
+    g.rect(left, 0, width, horizon).fill({ color: 0x1a1220 });
+    g.rect(left, horizon, width, this.height - horizon).fill({ color: 0x241a2c });
+    g.moveTo(left, horizon).lineTo(this.width, horizon)
+      .stroke({ width: 1, color: 0xffffff, alpha: 0.06 });
+
+    // Floorboards receding, which is most of what sells a floor.
+    for (let i = 1; i < 7; i++) {
+      const t = i / 7;
+      const y = horizon + (this.height - horizon) * t * t;
+      g.moveTo(left, y).lineTo(this.width, y)
+        .stroke({ width: 1, color: 0xffffff, alpha: 0.04 });
     }
 
-    this.cat.view.visible = true;
-    const size = Math.min(available * 0.78, this.width * 0.18);
-    this.cat.draw(
-      {
-        lane: this.lastLane,
-        hitAtMs: this.lastHitAtMs,
-        missAtMs: this.lastMissAtMs,
-        bpm: state.bpm ?? 0,
-        playbackMs: state.playbackTimeMs,
-        nowMs: state.nowMs,
-      },
-      this.width / 2,
-      this.height - available * 0.08,
-      size,
-    );
+    // A pool of light where the dancing happens.
+    const glowY = this.height * 0.78;
+    g.ellipse(left + width / 2, glowY, width * 0.42, this.height * 0.16)
+      .fill({ color: 0xf472b6, alpha: state.roundRunning ? 0.07 : 0.035 });
+  }
+
+  /**
+   * Everyone's cat, walking about between rounds and dancing during one.
+   *
+   * Cats are drawn back to front so a nearer one overlaps a further one, which
+   * is the whole payoff of giving the room any depth at all.
+   */
+  private drawCats(state: LaneRenderState, deltaMs: number): void {
+    const players = state.players ?? [];
+    const left = this.stripWidth();
+    const width = this.width - left;
+
+    // Retire cats whose player has gone.
+    const present = new Set(players.map((p) => p.id));
+    for (const [id, entry] of this.cats) {
+      if (present.has(id)) continue;
+      entry.dancer.destroy();
+      entry.label.destroy();
+      this.cats.delete(id);
+    }
+
+    const drawn: Array<{ y: number; entry: { dancer: CatDancer; label: Text }; player: RoomPlayerView; size: number; x: number }> = [];
+
+    for (const player of players) {
+      let entry = this.cats.get(player.id);
+      if (!entry) {
+        const dancer = new CatDancer();
+        const label = new Text({
+          text: player.name,
+          style: {
+            fill: player.isMe ? 0xf472b6 : 0xbfb2cc,
+            fontSize: 11,
+            fontFamily: 'ui-monospace, Menlo, monospace',
+            fontWeight: '600',
+          },
+        });
+        label.anchor.set(0.5);
+        this.catLayer.addChild(dancer.view, label);
+        entry = { dancer, walker: createWalker(player.id, state.nowMs), label };
+        this.cats.set(player.id, entry);
+      }
+
+      entry.walker = step(entry.walker, player.id, state.nowMs, deltaMs, {
+        frozen: state.roundRunning,
+      });
+
+      const scale = depthScale(entry.walker.position.y);
+      const x = left + entry.walker.position.x * width;
+      const y = entry.walker.position.y * this.height;
+      const size = Math.min(this.height * 0.2, width * 0.16) * scale;
+
+      drawn.push({ y, entry, player, size, x });
+    }
+
+    // Painter's algorithm: further up the room is further away.
+    drawn.sort((a, b) => a.y - b.y);
+    for (const item of drawn) {
+      this.catLayer.setChildIndex(item.entry.dancer.view, this.catLayer.children.length - 1);
+      this.catLayer.setChildIndex(item.entry.label, this.catLayer.children.length - 1);
+
+      // The local player's cat is posed from what the renderer itself saw,
+      // which is a frame earlier than anything that could arrive over a socket.
+      const mine = item.player.isMe;
+      item.entry.dancer.draw(
+        {
+          lane: mine ? this.lastLane : (item.player.lane ?? null),
+          hitAtMs: mine ? this.lastHitAtMs : (item.player.hitAtMs ?? 0),
+          missAtMs: mine ? this.lastMissAtMs : (item.player.missAtMs ?? 0),
+          bpm: state.roundRunning ? (state.bpm ?? 0) : 0,
+          playbackMs: state.playbackTimeMs,
+          nowMs: state.nowMs,
+        },
+        item.x,
+        item.y,
+        item.size,
+      );
+
+      item.entry.label.position.set(item.x, item.y + item.size * 0.16);
+      item.entry.label.scale.set(Math.max(0.7, item.size / (this.height * 0.2)));
+    }
   }
 
   /** Feedback for one judgment, fired straight from the engine's output. */

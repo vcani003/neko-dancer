@@ -30,7 +30,7 @@ import type { PlaybackAdapter } from './playback/PlaybackAdapter.ts';
 import { LocalChartStore, chartKey, type StoredChart } from './charts/ChartStore.ts';
 import AddSong from './ui/AddSong.tsx';
 import { KeyboardInput } from './input/KeyboardInput.ts';
-import { DEFAULT_LEAD_MS, LaneRenderer } from './render/LaneRenderer.ts';
+import { DEFAULT_LEAD_MS, LaneRenderer, type RoomPlayerView } from './render/LaneRenderer.ts';
 import { C2S, useRoom } from './net/useRoom.ts';
 
 type Phase = 'menu' | 'adding' | 'playing' | 'results';
@@ -61,6 +61,15 @@ export default function App() {
   const [hud, setHud] = useState<HudView>(EMPTY_HUD);
   const [error, setError] = useState<string | null>(null);
   const [countdownEndsAt, setCountdownEndsAt] = useState<number | null>(null);
+  /**
+   * Who is in the room, for the renderer.
+   *
+   * Mirrored into a ref because the draw loop needs it every frame and must
+   * not read React state from inside requestAnimationFrame. Falls back to a
+   * single local cat, so the room is never empty just because the server is
+   * unreachable.
+   */
+  const playersRef = useRef<RoomPlayerView[]>([]);
   const [countdownLeft, setCountdownLeft] = useState(0);
   // The round effect is declared above `start`; a ref bridges the ordering.
   const startRef = useRef<() => Promise<void>>(async () => {});
@@ -237,7 +246,9 @@ export default function App() {
           heldLanes: inputRef.current?.heldLanes() ?? new Set<Lane>(),
           leadMs: DEFAULT_LEAD_MS,
           nowMs: now,
-          bpm: phaseRef.current === 'playing' ? chart.analysis.bpm : 0,
+          bpm: chart.analysis.bpm,
+          players: playersRef.current,
+          roundRunning: phaseRef.current === 'playing',
         });
       }
 
@@ -365,6 +376,14 @@ export default function App() {
   useEffect(() => () => adapterRef.current?.dispose(), []);
 
   const me = room.room?.players.find((p) => p.id === room.playerId);
+
+  useEffect(() => {
+    const roster = room.room?.players ?? [];
+    playersRef.current =
+      roster.length > 0
+        ? roster.map((p) => ({ id: p.id, name: p.name, isMe: p.id === room.playerId }))
+        : [{ id: 'me', name: name || 'you', isMe: true }];
+  }, [room.room, room.playerId, name]);
   const score = hud.score;
   const live = phase === 'playing';
   const progress = hud.durationMs > 0 ? Math.min(1, Math.max(0, hud.playbackTimeMs / hud.durationMs)) : 0;
@@ -374,6 +393,19 @@ export default function App() {
   return (
     <div className="app">
       <div className="field" ref={stageRef}>
+        {/*
+          The video hangs on the back wall like a screen in the room, which is
+          both how the original reads and how YouTube requires it: visible and
+          working, never hidden behind the game.
+        */}
+        <div
+          className="tv"
+          style={{ display: chart.song.playback.provider === 'youtube' ? 'block' : 'none' }}
+        >
+          <div className="tv__screen" ref={youtubeRef} />
+          <div className="tv__stand" />
+        </div>
+
         {live && (
           <>
             <div className="hud">
@@ -567,17 +599,6 @@ export default function App() {
       </div>
 
       <aside className="side">
-        <div
-          className="card"
-          style={{ display: chart.song.playback.provider === 'youtube' ? 'block' : 'none' }}
-        >
-          <h2 className="side__heading">Now playing</h2>
-          <div className="ytplayer" ref={youtubeRef} />
-          <p className="hint" style={{ marginTop: 6 }}>
-            The video plays here and stays yours to control.
-          </p>
-        </div>
-
         <div className="card">
           <h2 className="side__heading">You</h2>
           <input
