@@ -14,11 +14,12 @@ import { MAX_CHAT_LENGTH, MAX_NAME_LENGTH, MAX_PLAYLIST, MIN_PLAYERS_FOR_REWARD 
  * control characters can corrupt a terminal or a log, and an unbounded string
  * is an easy way to spoil a room for everyone in it.
  */
-const CONTROL_CHARS = /[\u0000-\u001F\u007F]/g;
+const isControlChar = (code) => code < 0x20 || code === 0x7f;
 
 const sanitise = (value, limit) =>
-  String(value ?? '')
-    .replace(CONTROL_CHARS, '')
+  [...String(value ?? '')]
+    .filter((ch) => !isControlChar(ch.codePointAt(0)))
+    .join('')
     .trim()
     .slice(0, limit);
 
@@ -172,6 +173,14 @@ export class RoomRegistry {
     for (const [id, room] of this.rooms) {
       if (room.isEmpty()) this.rooms.delete(id);
     }
+  }
+
+  size() {
+    return this.rooms.size;
+  }
+
+  has(id) {
+    return this.rooms.has(sanitise(id, 24) || 'lobby');
   }
 
   list() {

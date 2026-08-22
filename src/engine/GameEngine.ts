@@ -76,8 +76,21 @@ export class GameEngine {
     return this.windows;
   }
 
+  /** Every arrow judged. A failed run stops judging, so this stays false. */
   isComplete(): boolean {
     return this.arrows.every((a) => a.judgment !== null);
+  }
+
+  /**
+   * The run is over, one way or the other.
+   *
+   * This is the signal a screen should watch, not `isComplete`. Health
+   * reaching zero stops judgment, so a failed run never finishes its chart and
+   * would sit on the play screen forever waiting for a completion that cannot
+   * arrive.
+   */
+  isOver(): boolean {
+    return this.score.failed || this.isComplete();
   }
 
   reset(): void {
