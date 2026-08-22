@@ -29,6 +29,7 @@ import { YouTubeAdapter } from './playback/YouTubeAdapter.ts';
 import type { PlaybackAdapter } from './playback/PlaybackAdapter.ts';
 import { LocalChartStore, chartKey, type StoredChart } from './charts/ChartStore.ts';
 import { validateChart } from './charts/validator.ts';
+import { YouTubePlaybackError } from './playback/YouTubeAdapter.ts';
 import AddSong from './ui/AddSong.tsx';
 import SectionEditor from './ui/SectionEditor.tsx';
 import { flatPlan, type SongPlan } from './charts/SongPlan.ts';
@@ -61,10 +62,35 @@ const EMPTY_HUD: HudView = {
   durationMs: 0,
 };
 
+/**
+ * Which of the room's fixed explanations fits this failure.
+ *
+ * A code, never a sentence: the room announces it as a system message, and the
+ * wording belongs to the server so that no client can put official-looking
+ * text in everyone's chat.
+ */
+function troubleReason(error: YouTubePlaybackError | null): string {
+  switch (error?.code) {
+    case 101:
+    case 150:
+      return 'embedBlocked';
+    case 100:
+      return 'unavailable';
+    case 5:
+      return 'playerFailed';
+    case 2:
+      return 'badId';
+    default:
+      return 'unknown';
+  }
+}
+
 export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
   const [hud, setHud] = useState<HudView>(EMPTY_HUD);
   const [error, setError] = useState<string | null>(null);
+  /** What to try next. Separate from the error so it can be worded as advice. */
+  const [errorHint, setErrorHint] = useState<string | null>(null);
   const [countdownEndsAt, setCountdownEndsAt] = useState<number | null>(null);
   /**
    * Who is in the room, for the renderer.
@@ -112,10 +138,20 @@ export default function App() {
   }, [store]);
   useEffect(refreshCharts, [refreshCharts]);
 
-  const allCharts = useMemo(
-    () => [TUTORIAL_CHART, ...saved.map((s) => s.chart)],
-    [saved],
-  );
+  /**
+   * The built-in chart first, then everything saved here.
+   *
+   * De-duplicated by key, because a chart can arrive from two directions at
+   * once: shipped with the game and saved locally after the room played it.
+   * Without this the tutorial appears twice the moment anyone picks it.
+   */
+  const allCharts = useMemo(() => {
+    const byKey = new Map<string, Chart>();
+    for (const c of [TUTORIAL_CHART, ...saved.map((s) => s.chart)]) {
+      if (!byKey.has(chartKey(c))) byKey.set(chartKey(c), c);
+    }
+    return [...byKey.values()];
+  }, [saved]);
   /**
    * The room's song, which wins over any local selection while connected.
    *
@@ -143,6 +179,7 @@ export default function App() {
         // Loudly, because the alternative is a player pressing ready against a
         // song that silently never arrived.
         setError(`That song could not be loaded: ${check.errors[0]}`);
+        setErrorHint('Ask whoever picked it to add it again.');
         return;
       }
       const next = incoming as Chart;
@@ -374,8 +411,29 @@ export default function App() {
     acceptRoomChart(room.song.chart, room.song.pickedBy ?? undefined);
   }, [room.song, acceptRoomChart]);
 
+  /**
+   * Report a failure to the player, and to the room.
+   *
+   * The room half matters as much as the message: when one person's video will
+   * not load, everyone else is left waiting on a player who is never going to
+   * start. Saying so ends the round instead of hanging it.
+   */
+  const reportFailure = useCallback(
+    (err: unknown, fallback: string) => {
+      const known = err instanceof YouTubePlaybackError ? err : null;
+      setError(known?.message ?? (err instanceof Error ? err.message : fallback));
+      setErrorHint(known?.hint ?? null);
+      // Sent whatever the cause, and whether or not it was YouTube that named
+      // it. Knowing WHY is a refinement; knowing that someone is not going to
+      // start is what stops the rest of the room waiting on them.
+      room.send(C2S.TROUBLE, { reason: troubleReason(known) });
+    },
+    [room.send],
+  );
+
   const start = useCallback(async () => {
     setError(null);
+    setErrorHint(null);
     adapterRef.current?.dispose();
     rendererRef.current?.clearEffects();
 
@@ -388,6 +446,12 @@ export default function App() {
         adapter = await YouTubeAdapter.create({
           videoId: playback.videoId,
           container: youtubeRef.current!,
+          // A video that dies part-way through would otherwise just stop the
+          // clock, leaving a chart frozen on screen with no explanation.
+          onLateError: (err) => {
+            reportFailure(err, 'The video stopped.');
+            setPhase('menu');
+          },
         });
       } else {
         adapter = new ClickTrackAdapter({
@@ -398,7 +462,7 @@ export default function App() {
         });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'That song could not be loaded.');
+      reportFailure(err, 'That song could not be loaded.');
       setPhase('menu');
       return;
     }
@@ -413,10 +477,10 @@ export default function App() {
       clock.reset();
       setPhase('playing');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start audio.');
+      reportFailure(err, 'Could not start audio.');
       setPhase('menu');
     }
-  }, [chart, offsetMs]);
+  }, [chart, offsetMs, reportFailure]);
 
   useEffect(() => {
     startRef.current = start;
@@ -594,7 +658,12 @@ export default function App() {
                 Missing drains your health — run out and the song ends.
               </p>
 
-              {error && <p className="hint" style={{ color: 'var(--bad)' }}>{error}</p>}
+              {error && (
+                <>
+                  <p className="hint" style={{ color: 'var(--bad)' }}>{error}</p>
+                  {errorHint && <p className="hint">{errorHint}</p>}
+                </>
+              )}
               <button className="button--primary" onClick={start}>Play</button>
             </div>
           </div>

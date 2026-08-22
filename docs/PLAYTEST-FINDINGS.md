@@ -124,6 +124,53 @@ which the round ends itself and the room returns to the lobby.
 
 ---
 
+## 5. "Video unavailable" on one machine and not the other
+
+**Found by:** Vero and her friend, playing a YouTube song together.
+
+> "my friend selected the song after i hit ready, but it said the video was
+> unavailable after we both hit play. my side it started playing with beatmap,
+> his side did not start the song"
+
+**What the game said.** "That video cannot be played here." That sentence is
+true of every possible failure and useful for none of them, and it was the only
+thing the code ever produced — YouTube reports a numbered reason on the error
+event and the adapter discarded it.
+
+The reasons are genuinely different and lead to different actions:
+
+| Code | What it means | What to do |
+| --- | --- | --- |
+| 2 | The video id is malformed | Add the song again from its link |
+| 5 | The player would not start in this browser | Reload, or try another browser |
+| 100 | Private, deleted, or blocked in that country | Try another upload |
+| 101, 150 | The uploader disallows embedding | **Nothing** — use a different upload |
+
+101 and 150 are the ones that read as a bug in the game. The video plays
+perfectly on youtube.com and is blocked everywhere else, deliberately, and no
+amount of reloading changes it. Someone can spend an evening on that.
+
+**The origin was ruled out first,** since the obvious theory was that
+`localhost` worked and the LAN address did not. It was checked rather than
+assumed: the same video loaded fine from both `http://localhost:5181` and
+`http://192.168.4.101:5181`. So the address is not the variable; the video and
+the viewer are. Region and age restrictions differ per person, which fits a
+video that plays for one player and not the other.
+
+**A synchronous throw hid behind the same message.** For a malformed id the
+IFrame API throws from the constructor, before any error event exists to
+listen for, so that path never reached the code-handling at all. Now wrapped
+with the rest.
+
+**The half that mattered more.** One player's video failing left everyone else
+waiting on someone who was never going to report a score. A failure to start is
+now announced to the room and treated as finished, so the round ends. The
+client sends a *code* and the server chooses the words — a system message looks
+authoritative, and any client that could write its own would be able to put
+official-looking text in everyone's chat.
+
+---
+
 ## Pattern
 
 The first two are the same shape: **a global listener that did not ask where

@@ -13,6 +13,15 @@ export const C2S = {
   FINISH: 'finish',
   READY: 'ready',
   PICK_SONG: 'pickSong',
+  /**
+   * "The song would not play for me."
+   *
+   * Carries a CODE, never a message. The room announces it as a system line,
+   * and system lines look authoritative — so the wording has to come from the
+   * server. A client that could write its own would be able to post official-
+   * looking text in everyone's chat.
+   */
+  TROUBLE: 'trouble',
   QUEUE_SONG: 'queueSong',
 };
 

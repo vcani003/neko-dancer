@@ -18,6 +18,66 @@
  */
 import type { PlaybackAdapter, PlaybackState } from './PlaybackAdapter.ts';
 
+/**
+ * A video that will not play, and why.
+ *
+ * YouTube says exactly what went wrong — a number on the error event — and the
+ * first version of this threw all of it away in favour of "that video cannot
+ * be played here". Two people then spent a round unable to tell whether the
+ * problem was the link, the network, the room or the game.
+ *
+ * The distinction that matters most: a video can be perfectly playable on
+ * youtube.com and still refuse to play inside another site. That is the
+ * uploader's setting, it is not something this game can work around, and the
+ * only fix is a different upload — which is worth saying out loud rather than
+ * leaving someone to reload hopefully.
+ */
+export class YouTubePlaybackError extends Error {
+  readonly code: number;
+  readonly hint: string;
+
+  constructor(code: number, message: string, hint: string) {
+    super(message);
+    this.name = 'YouTubePlaybackError';
+    this.code = code;
+    this.hint = hint;
+  }
+}
+
+/** https://developers.google.com/youtube/iframe_api_reference#onError */
+export function describeYouTubeError(code: number): { message: string; hint: string } {
+  switch (code) {
+    case 2:
+      return {
+        message: 'YouTube did not recognise that video id.',
+        hint: 'Add the song again from its YouTube link.',
+      };
+    case 5:
+      return {
+        message: "YouTube's player could not start in this browser.",
+        hint: 'Reload the page, and try a different browser if it keeps happening.',
+      };
+    case 100:
+      return {
+        message: 'That video is private, deleted, or not available in your country.',
+        hint: 'Someone else may still be able to see it — try another upload of the song.',
+      };
+    case 101:
+    case 150:
+      return {
+        // The one people misread as a bug in the game. It is not: the video
+        // plays on youtube.com and is blocked everywhere else, on purpose.
+        message: 'The uploader does not allow this video to play outside YouTube.',
+        hint: 'Nothing here can change that — pick a different upload of the same song.',
+      };
+    default:
+      return {
+        message: `YouTube refused to play that video (error ${code}).`,
+        hint: 'Try another upload of the song.',
+      };
+  }
+}
+
 /** YouTube's player states, which arrive as bare numbers. */
 const YT_STATE = {
   UNSTARTED: -1,
@@ -91,6 +151,14 @@ export interface YouTubeAdapterOptions {
   videoId: string;
   /** The element the player is mounted into. It must stay visible. */
   container: HTMLElement;
+  /**
+   * Called if the video fails AFTER it has started.
+   *
+   * A video can die mid-song — the network drops, or a restriction is applied
+   * on a later segment. Without this the clock simply stops and the player is
+   * left staring at a chart that has stopped moving with no explanation.
+   */
+  onLateError?: (error: YouTubePlaybackError) => void;
 }
 
 export class YouTubeAdapter implements PlaybackAdapter {
@@ -107,7 +175,7 @@ export class YouTubeAdapter implements PlaybackAdapter {
     options.container.appendChild(mount);
 
     await new Promise<void>((resolve, reject) => {
-      adapter.player = new api.Player(mount, {
+      const config = {
         videoId: options.videoId,
         playerVars: {
           // Controls stay on and branding stays put. Hiding the player or
@@ -116,15 +184,43 @@ export class YouTubeAdapter implements PlaybackAdapter {
           controls: 1,
           rel: 0,
           playsinline: 1,
+          // Named explicitly, as YouTube's documentation asks. The page is
+          // served from a LAN address as often as from localhost, and both are
+          // legitimate origins here.
+          origin: window.location.origin,
         },
         events: {
           onReady: () => {
             adapter.ready = true;
             resolve();
           },
-          onError: () => reject(new Error('That video cannot be played here.')),
+          onError: (event: { data: number }) => {
+            const { message, hint } = describeYouTubeError(event.data);
+            const error = new YouTubePlaybackError(event.data, message, hint);
+            // Before onReady this is why the song never started. After it, the
+            // song has already begun and the caller has to be told separately.
+            if (adapter.ready) options.onLateError?.(error);
+            else reject(error);
+          },
         },
-      });
+      };
+
+      try {
+        adapter.player = new api.Player(mount, config);
+      } catch (err) {
+        // The constructor THROWS for a malformed id — synchronously, before
+        // there is any error event to listen for. Left unwrapped it escapes as
+        // a plain Error carrying YouTube's own "Invalid video id", which loses
+        // the code that everything downstream keys off.
+        const { hint } = describeYouTubeError(2);
+        reject(
+          new YouTubePlaybackError(
+            2,
+            err instanceof Error ? err.message : 'YouTube rejected that video id.',
+            hint,
+          ),
+        );
+      }
     });
 
     return adapter;

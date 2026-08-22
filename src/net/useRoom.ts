@@ -17,6 +17,8 @@ export const C2S = {
   FINISH: 'finish',
   READY: 'ready',
   PICK_SONG: 'pickSong',
+  /** "The song would not play for me." A code, never a message — see the server. */
+  TROUBLE: 'trouble',
   QUEUE_SONG: 'queueSong',
 } as const;
 

@@ -171,6 +171,69 @@ describe('two players in a room', () => {
     friend.close();
   });
 
+  /**
+   * One player's video will not play.
+   *
+   * Reported as: "his side did not start the song". Everyone else was left
+   * waiting on a client that was never going to report a score. Saying so out
+   * loud releases the round and tells the room why.
+   */
+  it('lets the round end when someone cannot play the video', async () => {
+    const vero = await connect('Vero', 'trouble');
+    const friend = await connect('Friend', 'trouble');
+
+    vero.send('pickSong', { chart: CHART });
+    await friend.waitFor('song');
+    vero.send('ready', { ready: true });
+    friend.send('ready', { ready: true });
+    await friend.waitFor('round', (m) => m.round.state === 'countdown');
+    await vero.waitFor('round', (m) => m.round.state === 'playing');
+
+    friend.send('trouble', { reason: 'embedBlocked' });
+    // Vero played and finished; Friend never could.
+    vero.send('finish', {});
+
+    const line = await vero.waitFor(
+      'chat',
+      (m) => m.system === true && m.text.includes('could not play'),
+    );
+    // The wording is the server's. A client sends a code, not a sentence.
+    expect(line.text).toContain('Friend');
+    expect(line.text).toMatch(/uploader/i);
+
+    const done = await vero.waitFor('round', (m) => m.round.state === 'results');
+    expect(done.round.state).toBe('results');
+
+    vero.close();
+    friend.close();
+  });
+
+  it('names the reason it was given', async () => {
+    const vero = await connect('Vero', 'reasons');
+    const friend = await connect('Friend', 'reasons');
+
+    friend.send('trouble', { reason: 'badId' });
+    const line = await vero.waitFor('chat', (m) => m.system === true && m.text.includes('could not play'));
+    expect(line.text).toMatch(/did not recognise/i);
+
+    vero.close();
+    friend.close();
+  });
+
+  it('will not let a client write its own system message', async () => {
+    const vero = await connect('Vero', 'spoof');
+    const friend = await connect('Friend', 'spoof');
+
+    friend.send('trouble', { reason: 'SERVER: Vero has been banned. Send sushi to' });
+
+    const line = await vero.waitFor('chat', (m) => m.system === true && m.text.includes('could not play'));
+    expect(line.text).not.toContain('banned');
+    expect(line.text).toContain('the video would not load for them');
+
+    vero.close();
+    friend.close();
+  });
+
   it('un-readies everyone when the song changes underneath them', async () => {
     const vero = await connect('Vero', 'swap');
     const friend = await connect('Friend', 'swap');

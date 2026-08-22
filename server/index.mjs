@@ -56,6 +56,20 @@ const MAX_ROOMS = 32;
 /** Messages per socket per window, beyond which the socket is closed. */
 const RATE_LIMIT = 40;
 const RATE_WINDOW_MS = 2000;
+/**
+ * What a client may claim went wrong, and how the room is told.
+ *
+ * A closed set, because the text is broadcast as a system message. Clients
+ * choose a code; the server chooses the words.
+ */
+const TROUBLE_REASONS = {
+  embedBlocked: 'the uploader does not allow that video outside YouTube.',
+  badId: 'YouTube did not recognise that video link.',
+  unavailable: 'that video is private, deleted, or blocked in their country.',
+  playerFailed: "YouTube's player would not start on their machine.",
+  unknown: 'the video would not load for them.',
+};
+
 /** A score above this is not a score, it is a claim worth ignoring. */
 const MAX_PLAUSIBLE_SCORE = 5_000_000;
 
@@ -377,6 +391,26 @@ wss.on('connection', (socket) => {
         room.setReady(socket.playerId, message.ready !== false);
         publishRoom(room);
         if (room.everyoneReady()) startCountdown(room);
+        break;
+      }
+
+      case C2S.TROUBLE: {
+        if (!socket.roomId) break;
+        const room = rooms.get(socket.roomId);
+        const player = room.players.get(socket.playerId);
+        const reason = TROUBLE_REASONS[message.reason] ?? TROUBLE_REASONS.unknown;
+        broadcast(room, S2C.CHAT, {
+          system: true,
+          text: `${player?.name ?? 'Someone'} could not play the song — ${reason}`,
+        });
+        // Treated as finished: they are not going to send a score, and the
+        // rest of the room should not wait out the watchdog because of it.
+        if (room.round.state === 'playing' && room.markFinished(socket.playerId)) {
+          clearRoundTimer(room.id);
+          const awarded = room.endRound();
+          broadcast(room, S2C.ROUND, { round: room.round, awarded });
+        }
+        publishRoom(room);
         break;
       }
 
