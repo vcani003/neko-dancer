@@ -11,7 +11,7 @@
  */
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { networkInterfaces } from 'node:os';
+import { hostname, networkInterfaces } from 'node:os';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
@@ -534,6 +534,27 @@ function lanAddress() {
   return 'localhost';
 }
 
+/**
+ * This machine's Bonjour name, which is a HOSTNAME rather than an address.
+ *
+ * That distinction decides whether YouTube videos play. A bare IP is not a
+ * domain, and YouTube refuses to embed restriction-bearing videos on one —
+ * error 150, "the uploader does not allow this video outside YouTube", even
+ * though the very same video plays fine from `localhost`. Measured: one video
+ * failed three times out of three on `http://192.168.4.101:5181` and succeeded
+ * three out of three on `http://veronicas-macbook-air.local:5181`, with an
+ * unrestricted control video working on both.
+ *
+ * So the address to share is the name, not the number. macOS publishes it over
+ * mDNS; macOS and iOS resolve it natively, and Windows has since version 1803.
+ */
+function bonjourHost() {
+  const name = hostname();
+  if (!name) return null;
+  const short = name.endsWith('.local') ? name : `${name}.local`;
+  return short.toLowerCase();
+}
+
 server.listen(PORT, HOST, () => {
   const local = HOST === '127.0.0.1' || HOST === 'localhost';
   console.log('neko dancer');
@@ -541,7 +562,18 @@ server.listen(PORT, HOST, () => {
   if (local) {
     console.log('  everyone   not reachable — bound to this machine only');
   } else {
-    console.log(`  everyone   http://${lanAddress()}:${PORT}   <- share this`);
+    const name = bonjourHost();
+    if (name) {
+      console.log(`  everyone   http://${name}:${PORT}   <- share this`);
+      console.log(`  fallback   http://${lanAddress()}:${PORT}`);
+      console.log('');
+      console.log('  Share the NAME, not the number. YouTube refuses to embed');
+      console.log('  many videos on a bare IP address — the song plays for you');
+      console.log('  and fails for everyone you sent the numeric link to.');
+      console.log('  Use the fallback only if the name will not resolve.');
+    } else {
+      console.log(`  everyone   http://${lanAddress()}:${PORT}   <- share this`);
+    }
     console.log('');
     console.log('  Anyone who can reach this machine can reach this server.');
     console.log('  On a shared or public network, restrict it:');

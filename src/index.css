@@ -248,3 +248,9 @@ kbd {
 .section__controls button.is-active { border-color: var(--line); color: var(--muted); }
 .section__intensity { display: grid; grid-template-columns: 3rem 1fr; gap: 6px; align-items: center; }
 .section__intensity span { font-size: 0.68rem; color: var(--muted); }
+
+/* The error boundary's notice. Deliberately plain: it appears when something
+   has already gone wrong, so it must not depend on anything that could also
+   be broken. */
+.panel--error { border-color: var(--bad); max-width: 32rem; }
+.panel--error h2 { font-size: 1rem; margin: 0 0 0.5rem; color: var(--bad); }

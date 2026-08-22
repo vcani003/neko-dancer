@@ -150,12 +150,29 @@ The reasons are genuinely different and lead to different actions:
 perfectly on youtube.com and is blocked everywhere else, deliberately, and no
 amount of reloading changes it. Someone can spend an evening on that.
 
-**The origin was ruled out first,** since the obvious theory was that
-`localhost` worked and the LAN address did not. It was checked rather than
-assumed: the same video loaded fine from both `http://localhost:5181` and
-`http://192.168.4.101:5181`. So the address is not the variable; the video and
-the viewer are. Region and age restrictions differ per person, which fits a
-video that plays for one player and not the other.
+**The origin was ruled out, and that was wrong.** The first check loaded a
+video from both `http://localhost:5181` and `http://192.168.4.101:5181`, saw it
+work from both, and concluded the address was not the variable. The mistake was
+the choice of video: an unrestricted one embeds anywhere, so it could not
+distinguish the two origins even in principle. A control that cannot fail is
+not a control.
+
+Re-run with the actual song, three times each way:
+
+| Origin | This video | Unrestricted control |
+| --- | --- | --- |
+| `http://localhost:5181` | plays, 3/3 | plays |
+| `http://<machine>.local:5181` | plays, 3/3 | plays |
+| `http://192.168.4.101:5181` | **error 150**, 3/3 | plays |
+
+So the address *was* the variable. A bare IP is not a domain, and YouTube
+refuses to embed restriction-bearing videos on one — while accepting the same
+video from `localhost` and from an mDNS hostname. It fits the report exactly:
+the host was on `localhost` and it worked, the guest was on the numeric address
+and it did not.
+
+The server now prints `http://<machine>.local:5181` as the address to share and
+the numeric one only as a fallback.
 
 **A synchronous throw hid behind the same message.** For a malformed id the
 IFrame API throws from the constructor, before any error event exists to
