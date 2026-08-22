@@ -287,8 +287,17 @@ function lanAddress() {
   return 'localhost';
 }
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, HOST, () => {
+  const local = HOST === '127.0.0.1' || HOST === 'localhost';
   console.log('neko dancer');
   console.log(`  you        http://localhost:${PORT}`);
-  console.log(`  everyone   http://${lanAddress()}:${PORT}   <- share this`);
+  if (local) {
+    console.log('  everyone   not reachable — bound to this machine only');
+  } else {
+    console.log(`  everyone   http://${lanAddress()}:${PORT}   <- share this`);
+    console.log('');
+    console.log('  Anyone who can reach this machine can reach this server.');
+    console.log('  On a shared or public network, restrict it:');
+    console.log(`    HOST=127.0.0.1 npm run serve`);
+  }
 });
