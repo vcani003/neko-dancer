@@ -11,7 +11,8 @@ export const C2S = {
   CHAT: 'chat',
   SCORE: 'score',
   FINISH: 'finish',
-  START: 'start',
+  READY: 'ready',
+  PICK_SONG: 'pickSong',
   QUEUE_SONG: 'queueSong',
 };
 
@@ -30,3 +31,12 @@ export const MAX_PLAYLIST = 10;
 
 /** Sushi is only earned in a room with other people, as in the original. */
 export const MIN_PLAYERS_FOR_REWARD = 2;
+
+/**
+ * How long everyone waits between the last ready and the first arrow.
+ *
+ * Long enough to get hands onto keys, short enough that nobody drums their
+ * fingers. It is also the window that absorbs the difference in when each
+ * client receives the go-ahead.
+ */
+export const COUNTDOWN_MS = 3000;

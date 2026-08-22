@@ -15,7 +15,8 @@ export const C2S = {
   CHAT: 'chat',
   SCORE: 'score',
   FINISH: 'finish',
-  START: 'start',
+  READY: 'ready',
+  PICK_SONG: 'pickSong',
   QUEUE_SONG: 'queueSong',
 } as const;
 
@@ -34,16 +35,25 @@ export interface RoomPlayer {
   score: number;
   combo: number;
   health: number;
+  ready: boolean;
   finished: boolean;
   sushi: number;
+}
+
+export interface RoomRound {
+  state: 'lobby' | 'countdown' | 'playing' | 'results' | string;
+  songId: string | null;
+  startedAt: number | null;
+  countdownMs?: number;
 }
 
 export interface RoomState {
   id: string;
   players: RoomPlayer[];
   playlist: Array<{ id: string; title: string; by: string }>;
-  round: { state: string; songId: string | null; startedAt: number | null };
+  round: RoomRound;
   songChooser: string | null;
+  song: { id: string; title: string; arrows: number } | null;
 }
 
 export interface ChatLine {
@@ -65,11 +75,29 @@ function socketUrl(): string {
   return `${protocol}//${window.location.host}`;
 }
 
+/**
+ * What the room told us to do, and when.
+ *
+ * The countdown arrives as a DURATION rather than an instant. Machines do not
+ * agree on the time and would need synchronising before an absolute moment
+ * meant anything — but "start in three seconds" means the same on every clock,
+ * and on a local network the difference in when each client receives it is a
+ * millisecond or two.
+ */
+export interface RoundSignal {
+  round: RoomRound;
+  /** The chart everyone is about to play, sent with the go-ahead. */
+  chart?: unknown;
+  /** When this signal arrived here, in performance.now() terms. */
+  receivedAtMs: number;
+}
+
 export function useRoom(name: string, roomId: string, enabled: boolean) {
   const [connection, setConnection] = useState<ConnectionState>('closed');
   const [room, setRoom] = useState<RoomState | null>(null);
   const [chat, setChat] = useState<ChatLine[]>([]);
   const [playerId, setPlayerId] = useState<string | null>(null);
+  const [signal, setSignal] = useState<RoundSignal | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const retryRef = useRef<number | null>(null);
@@ -112,6 +140,15 @@ export function useRoom(name: string, roomId: string, enabled: boolean) {
 
         if (message.type === S2C.WELCOME) setPlayerId(String(message.playerId));
         else if (message.type === S2C.ROOM) setRoom(message.room as RoomState);
+        else if (message.type === S2C.ROUND) {
+          setSignal({
+            round: message.round as RoomRound,
+            chart: message.chart,
+            // Stamped on arrival, so a countdown is measured from when this
+            // machine heard it rather than from when React got round to it.
+            receivedAtMs: performance.now(),
+          });
+        }
         else if (message.type === S2C.CHAT) {
           setChat((prev) =>
             [
@@ -154,5 +191,5 @@ export function useRoom(name: string, roomId: string, enabled: boolean) {
     }
   }, []);
 
-  return { connection, room, chat, playerId, send };
+  return { connection, room, chat, playerId, signal, send };
 }

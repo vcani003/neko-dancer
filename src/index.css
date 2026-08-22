@@ -156,3 +156,18 @@ kbd {
 .tapresult__bpm { font-size: 1.3rem; font-weight: 700; }
 .tapresult__quality { font-size: 0.72rem; line-height: 1.5; }
 .tapresult__note { font-size: 0.68rem; color: var(--muted); line-height: 1.5; }
+
+.readybar {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 8px 7px 11px;
+}
+.readybar__count { font-size: 0.75rem; color: var(--muted); text-align: left; }
+.readybar button { width: auto; padding: 7px 12px; font-size: 12px; }
+
+.countdown {
+  font-size: 5rem; font-weight: 800; line-height: 1; color: var(--pink);
+  letter-spacing: -0.04em;
+}
+
+.board__ready { color: var(--green); font-size: 0.62rem; letter-spacing: 0.06em; }

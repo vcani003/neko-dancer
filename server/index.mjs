@@ -15,7 +15,7 @@ import { networkInterfaces } from 'node:os';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { C2S, S2C } from './protocol.mjs';
+import { C2S, COUNTDOWN_MS, S2C } from './protocol.mjs';
 import { RoomRegistry, cleanChat, cleanName } from './rooms.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -142,6 +142,43 @@ const broadcast = (room, type, payload) => {
 
 const publishRoom = (room) => broadcast(room, S2C.ROOM, { room: room.toJSON() });
 
+/** Countdown timers, so a room leaving mid-count does not start a ghost round. */
+const countdowns = new Map();
+
+function cancelCountdown(roomId) {
+  const timer = countdowns.get(roomId);
+  if (timer) {
+    clearTimeout(timer);
+    countdowns.delete(roomId);
+  }
+}
+
+/**
+ * Everyone is ready: count down, then start together.
+ *
+ * The chart travels with the go-ahead so a player who has never charted this
+ * song can still play it — the room is the distribution mechanism, and a chart
+ * is small enough that this costs nothing.
+ */
+function startCountdown(room) {
+  if (countdowns.has(room.id)) return;
+
+  const round = room.beginCountdown(COUNTDOWN_MS);
+  broadcast(room, S2C.ROUND, { round, chart: room.chart });
+  publishRoom(room);
+
+  countdowns.set(
+    room.id,
+    setTimeout(() => {
+      countdowns.delete(room.id);
+      // The room may have emptied or someone may have left while counting.
+      if (room.isEmpty()) return;
+      broadcast(room, S2C.ROUND, { round: room.beginPlaying() });
+      publishRoom(room);
+    }, COUNTDOWN_MS),
+  );
+}
+
 wss.on('connection', (socket) => {
   socket.playerId = `p${nextId++}`;
   socket.roomId = null;
@@ -226,12 +263,33 @@ wss.on('connection', (socket) => {
         break;
       }
 
-      case C2S.START: {
+      case C2S.PICK_SONG: {
         if (!socket.roomId) break;
         const room = rooms.get(socket.roomId);
-        room.startRound(message.songId ?? null);
-        broadcast(room, S2C.ROUND, { round: room.round });
+        if (room.round.state === 'countdown' || room.round.state === 'playing') break;
+        // Charts arrive from players, so they are validated as data rather
+        // than trusted: enough shape to be playable, and nothing enormous.
+        const chart = message.chart;
+        if (!chart || typeof chart !== 'object' || !Array.isArray(chart.arrows)) {
+          send(socket, S2C.ERROR, { error: 'That chart could not be read.' });
+          break;
+        }
+        if (chart.arrows.length > 5000) {
+          send(socket, S2C.ERROR, { error: 'That chart is implausibly long.' });
+          break;
+        }
+        room.setChart(chart);
         publishRoom(room);
+        break;
+      }
+
+      case C2S.READY: {
+        if (!socket.roomId) break;
+        const room = rooms.get(socket.roomId);
+        if (room.round.state === 'countdown' || room.round.state === 'playing') break;
+        room.setReady(socket.playerId, message.ready !== false);
+        publishRoom(room);
+        if (room.everyoneReady()) startCountdown(room);
         break;
       }
 
@@ -272,6 +330,14 @@ wss.on('connection', (socket) => {
     const player = room.players.get(socket.playerId);
     room.removePlayer(socket.playerId);
     if (player) broadcast(room, S2C.CHAT, { system: true, text: `${player.name} left` });
+
+    if (room.isEmpty()) cancelCountdown(room.id);
+    // The last player still in a round finishes it, rather than leaving the
+    // room stuck mid-song because whoever else was playing closed their tab.
+    else if (room.round.state === 'playing' && room.markFinished(player?.id ?? '')) {
+      broadcast(room, S2C.ROUND, { round: room.endRound() });
+    }
+
     publishRoom(room);
     rooms.prune();
   });

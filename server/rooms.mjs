@@ -5,7 +5,13 @@
  * separated from MediaPipe: this is where the rules live, and rules are worth
  * being able to test without opening a connection.
  */
-import { MAX_CHAT_LENGTH, MAX_NAME_LENGTH, MAX_PLAYLIST, MIN_PLAYERS_FOR_REWARD } from './protocol.mjs';
+import {
+  COUNTDOWN_MS,
+  MAX_CHAT_LENGTH,
+  MAX_NAME_LENGTH,
+  MAX_PLAYLIST,
+  MIN_PLAYERS_FOR_REWARD,
+} from './protocol.mjs';
 
 /**
  * Strip control characters and clamp length.
@@ -39,6 +45,14 @@ export class Room {
     this.players = new Map();
     this.playlist = [];
     this.round = { state: 'lobby', songId: null, startedAt: null };
+    /**
+     * The chart everyone plays this round.
+     *
+     * Held by the room and sent to every player, so a song charted by one
+     * person is instantly playable by everyone — which is the whole reason
+     * charts are small JSON rather than anything heavier.
+     */
+    this.chart = null;
   }
 
   addPlayer(id, name) {
@@ -48,6 +62,7 @@ export class Room {
       score: 0,
       combo: 0,
       health: 100,
+      ready: false,
       finished: false,
       sushi: 0,
     };
@@ -92,6 +107,7 @@ export class Room {
         score: p.score,
         combo: p.combo,
         health: p.health,
+        ready: p.ready,
         finished: p.finished,
         sushi: p.sushi,
       }));
@@ -121,14 +137,58 @@ export class Room {
     return awarded;
   }
 
-  startRound(songId) {
-    this.round = { state: 'playing', songId, startedAt: Date.now() };
+  setChart(chart) {
+    this.chart = chart ?? null;
+    // Picking a new song un-readies everyone: agreeing to play one thing is
+    // not agreeing to play whatever it was changed to.
+    for (const player of this.players.values()) player.ready = false;
+  }
+
+  setReady(id, ready) {
+    const player = this.players.get(id);
+    if (player) player.ready = Boolean(ready);
+  }
+
+  /**
+   * Everyone present has said yes, and there is something to play.
+   *
+   * Requires at least one player so an empty room cannot start a round with
+   * itself, which `every` on an empty map would otherwise happily allow.
+   */
+  everyoneReady() {
+    if (this.players.size === 0) return false;
+    if (!this.chart) return false;
+    return [...this.players.values()].every((p) => p.ready);
+  }
+
+  /**
+   * Begin the countdown.
+   *
+   * Clients are told how long they have rather than when to start in absolute
+   * terms. Machines do not agree on the time and would need synchronising
+   * before an absolute instant meant anything, whereas a duration is the same
+   * everywhere — and on a local network the difference in when each client
+   * receives it is a millisecond or two.
+   */
+  beginCountdown(countdownMs = COUNTDOWN_MS) {
+    this.round = {
+      state: 'countdown',
+      songId: this.chart?.song?.id ?? null,
+      startedAt: null,
+      countdownMs,
+    };
     for (const player of this.players.values()) {
       player.score = 0;
       player.combo = 0;
       player.health = 100;
       player.finished = false;
     }
+    return this.round;
+  }
+
+  beginPlaying() {
+    this.round = { ...this.round, state: 'playing', startedAt: Date.now() };
+    return this.round;
   }
 
   markFinished(id) {
@@ -139,6 +199,7 @@ export class Room {
 
   endRound() {
     this.round = { ...this.round, state: 'results' };
+    for (const player of this.players.values()) player.ready = false;
     return this.awardSushi();
   }
 
@@ -149,6 +210,9 @@ export class Room {
       playlist: this.playlist,
       round: this.round,
       songChooser: this.songChooser(),
+      song: this.chart
+        ? { id: this.chart.song.id, title: this.chart.song.title, arrows: this.chart.arrows.length }
+        : null,
     };
   }
 }

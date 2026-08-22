@@ -22,7 +22,7 @@ import {
   suggestedOffsetMs,
   type ScoreState,
 } from './engine/ScoreSystem.ts';
-import { chartDurationMs, LANES, type Lane } from './charts/schema.ts';
+import { chartDurationMs, LANES, type Chart, type Lane } from './charts/schema.ts';
 import { TUTORIAL_CHART } from './charts/library.ts';
 import { ClickTrackAdapter } from './playback/ClickTrackAdapter.ts';
 import { YouTubeAdapter } from './playback/YouTubeAdapter.ts';
@@ -60,6 +60,10 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>('menu');
   const [hud, setHud] = useState<HudView>(EMPTY_HUD);
   const [error, setError] = useState<string | null>(null);
+  const [countdownEndsAt, setCountdownEndsAt] = useState<number | null>(null);
+  const [countdownLeft, setCountdownLeft] = useState(0);
+  // The round effect is declared above `start`; a ref bridges the ordering.
+  const startRef = useRef<() => Promise<void>>(async () => {});
 
   /**
    * Milliseconds added to judged time.
@@ -98,9 +102,18 @@ export default function App() {
     () => [TUTORIAL_CHART, ...saved.map((s) => s.chart)],
     [saved],
   );
+  /**
+   * A chart handed over by the room, which wins while a round is running.
+   *
+   * The room is the distribution mechanism: whoever picked the song sent their
+   * chart with it, so someone who has never charted this song can still play
+   * it. Charts are small JSON, which is what makes that free.
+   */
+  const [roomChart, setRoomChart] = useState<Chart | null>(null);
+
   const chart = useMemo(
-    () => allCharts.find((c) => chartKey(c) === selectedKey) ?? TUTORIAL_CHART,
-    [allCharts, selectedKey],
+    () => roomChart ?? allCharts.find((c) => chartKey(c) === selectedKey) ?? TUTORIAL_CHART,
+    [roomChart, allCharts, selectedKey],
   );
   const durationMs = useMemo(() => chartDurationMs(chart), [chart]);
 
@@ -251,6 +264,37 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [phase, durationMs, room]);
 
+  /**
+   * Follow the room: take the chart it sent, count down, and start.
+   *
+   * The countdown is measured from when the signal ARRIVED here rather than
+   * from when this effect runs, so a slow render does not make one player
+   * start late. Everyone is counting the same duration from within a
+   * millisecond or two of each other on a local network.
+   */
+  useEffect(() => {
+    const signal = room.signal;
+    if (!signal) return;
+
+    if (signal.round.state === 'countdown') {
+      if (signal.chart) setRoomChart(signal.chart as Chart);
+      const elapsed = performance.now() - signal.receivedAtMs;
+      const remaining = Math.max(0, (signal.round.countdownMs ?? 3000) - elapsed);
+      setCountdownEndsAt(performance.now() + remaining);
+      return;
+    }
+
+    if (signal.round.state === 'playing') {
+      setCountdownEndsAt(null);
+      void startRef.current();
+      return;
+    }
+
+    if (signal.round.state === 'results') {
+      setCountdownEndsAt(null);
+    }
+  }, [room.signal]);
+
   const start = useCallback(async () => {
     setError(null);
     adapterRef.current?.dispose();
@@ -288,13 +332,25 @@ export default function App() {
     try {
       await adapter.play();
       clock.reset();
-      room.send(C2S.START, { songId: chart.song.id });
       setPhase('playing');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start audio.');
       setPhase('menu');
     }
-  }, [chart, room, offsetMs]);
+  }, [chart, offsetMs]);
+
+  useEffect(() => {
+    startRef.current = start;
+  }, [start]);
+
+  /** Tick the visible countdown. Purely cosmetic; the start is already scheduled. */
+  useEffect(() => {
+    if (countdownEndsAt === null) return;
+    const id = window.setInterval(() => {
+      setCountdownLeft(Math.max(0, countdownEndsAt - performance.now()));
+    }, 60);
+    return () => window.clearInterval(id);
+  }, [countdownEndsAt]);
 
   const quit = useCallback(() => {
     adapterRef.current?.dispose();
@@ -308,6 +364,7 @@ export default function App() {
 
   useEffect(() => () => adapterRef.current?.dispose(), []);
 
+  const me = room.room?.players.find((p) => p.id === room.playerId);
   const score = hud.score;
   const live = phase === 'playing';
   const progress = hud.durationMs > 0 ? Math.min(1, Math.max(0, hud.playbackTimeMs / hud.durationMs)) : 0;
@@ -370,6 +427,32 @@ export default function App() {
 
               <button onClick={() => setPhase('adding')}>Add a song from YouTube</button>
 
+              {room.connection === 'open' && room.room && (
+                <div className="readybar">
+                  <span className="readybar__count mono">
+                    {room.room.players.filter((p) => p.ready).length} / {room.room.players.length} ready
+                  </span>
+                  <button
+                    className={me?.ready ? '' : 'button--primary'}
+                    onClick={() => {
+                      // Send the chart with the pick, so everyone plays this
+                      // one — including anyone who has never charted it.
+                      if (!me?.ready) room.send(C2S.PICK_SONG, { chart });
+                      room.send(C2S.READY, { ready: !me?.ready });
+                    }}
+                  >
+                    {me?.ready ? 'Not ready' : "I'm ready"}
+                  </button>
+                </div>
+              )}
+
+              {room.connection === 'open' && (room.room?.players.length ?? 0) < 2 && (
+                <p className="hint" style={{ fontSize: '0.72rem' }}>
+                  Waiting for someone to join. Everyone hits ready, then the song starts
+                  for all of you at once.
+                </p>
+              )}
+
               <div className="keycaps">
                 {LANES.map((lane) => (
                   <span key={lane} className="keycap">{ARROW_GLYPH[lane]}</span>
@@ -382,6 +465,21 @@ export default function App() {
 
               {error && <p className="hint" style={{ color: 'var(--bad)' }}>{error}</p>}
               <button className="button--primary" onClick={start}>Play</button>
+            </div>
+          </div>
+        )}
+
+        {countdownEndsAt !== null && phase !== 'playing' && (
+          <div className="overlay">
+            <div className="panel">
+              <p className="hint">Everyone is ready</p>
+              <div className="countdown mono">{Math.ceil(countdownLeft / 1000)}</div>
+              <p className="hint">{chart.song.title}</p>
+              <div className="keycaps">
+                {LANES.map((lane) => (
+                  <span key={lane} className="keycap">{ARROW_GLYPH[lane]}</span>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -539,7 +637,12 @@ export default function App() {
                   className={`board__row ${player.id === room.playerId ? 'board__row--me' : ''}`}
                 >
                   <span className="board__rank mono">{player.rank}</span>
-                  <span className="board__name">{player.name}</span>
+                  <span className="board__name">
+                    {player.name}
+                    {player.ready && room.room?.round.state === 'lobby' && (
+                      <span className="board__ready"> ready</span>
+                    )}
+                  </span>
                   <span className="mono">{player.score.toLocaleString()}</span>
                 </div>
               ))}
