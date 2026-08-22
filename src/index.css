@@ -109,3 +109,14 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .results__grid > div { background: var(--panel); padding: 0.6rem 0.4rem; display: flex; flex-direction: column; gap: 2px; }
 .results__k { font-size: 0.55rem; letter-spacing: 0.1em; color: var(--muted); }
 .results__v { font-size: 1rem; font-weight: 700; }
+
+.accuracy {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 9px; padding: 0.7rem 0.9rem;
+}
+.accuracy__value { font-size: 1.4rem; font-weight: 700; }
+.accuracy__label { font-size: 0.68rem; color: var(--muted); line-height: 1.5; }
+.accuracy__next { font-size: 0.7rem; color: var(--gold); margin-top: 3px; }
+
+input[type='range'] { width: 100%; accent-color: var(--pink); padding: 0; }

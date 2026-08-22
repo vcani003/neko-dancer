@@ -177,12 +177,54 @@ export function meanDeltaMs(state: ScoreState): number | null {
 
 export type Grade = 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
 
+/**
+ * What each grade needs, best first.
+ *
+ * Exported because a grade the player cannot predict is a grade they cannot
+ * chase. The results screen shows the next one up and how far away it is.
+ */
+export const GRADE_THRESHOLDS: ReadonlyArray<{ grade: Grade; min: number }> = [
+  { grade: 'S', min: 0.95 },
+  { grade: 'A', min: 0.9 },
+  { grade: 'B', min: 0.8 },
+  { grade: 'C', min: 0.7 },
+  { grade: 'D', min: 0 },
+];
+
 export function grade(state: ScoreState): Grade {
   if (state.failed) return 'F';
   const value = accuracy(state);
-  if (value >= 0.95) return 'S';
-  if (value >= 0.9) return 'A';
-  if (value >= 0.8) return 'B';
-  if (value >= 0.7) return 'C';
-  return 'D';
+  return GRADE_THRESHOLDS.find((t) => value >= t.min)?.grade ?? 'D';
+}
+
+/** The next grade up, and the accuracy it needs. Null at the top. */
+export function nextGrade(state: ScoreState): { grade: Grade; min: number } | null {
+  if (state.failed) return null;
+  const value = accuracy(state);
+  const better = [...GRADE_THRESHOLDS].reverse().find((t) => value < t.min);
+  return better ?? null;
+}
+
+/** Not worth suggesting a correction below this many hits — it would be noise. */
+const MIN_HITS_TO_CALIBRATE = 8;
+/** Below this, the player is centred and nudging them would make it worse. */
+const CALIBRATION_DEADBAND_MS = 8;
+
+/**
+ * The offset that would centre this player's timing, or null if there is not
+ * enough evidence or nothing worth correcting.
+ *
+ * A consistent bias is calibration, not skill. Someone hitting 40 ms early
+ * every time is playing accurately against a clock that disagrees with them by
+ * 40 ms, and no amount of practice fixes that — but one number does.
+ *
+ * Sign: delta is press time minus arrow time, so early is negative. Shifting
+ * judged time forward by the negation of the mean brings them to zero.
+ */
+export function suggestedOffsetMs(state: ScoreState, currentOffsetMs: number): number | null {
+  const hits = state.judgedCount - state.counts.MISS;
+  const mean = meanDeltaMs(state);
+  if (hits < MIN_HITS_TO_CALIBRATE || mean === null) return null;
+  if (Math.abs(mean) < CALIBRATION_DEADBAND_MS) return null;
+  return Math.round(currentOffsetMs - mean);
 }

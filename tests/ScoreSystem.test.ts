@@ -11,6 +11,8 @@ import {
   grade,
   initialScoreState,
   meanDeltaMs,
+  nextGrade,
+  suggestedOffsetMs,
 } from '../src/engine/ScoreSystem.ts';
 import type { Judgment } from '../src/engine/LaneJudge.ts';
 
@@ -142,5 +144,83 @@ describe('accuracy and timing', () => {
 
   it('has no timing opinion when nothing was hit', () => {
     expect(meanDeltaMs(play([['MISS', 0]]))).toBeNull();
+  });
+});
+
+describe('grades and calibration — "why did I get a D"', () => {
+  /**
+   * A real run: 53 arrows, 47 of them hit, and a D. The player hit 89% of the
+   * arrows and scored 62% accuracy, because accuracy weights HOW CLOSE each
+   * hit was — and a systematic 43 ms early bias pushed most of them out of
+   * PERFECT and into NICE.
+   */
+  const realRun = () => {
+    let state = initialScoreState();
+    for (let i = 0; i < 10; i++) state = applyJudgment(state, 'PERFECT', -20);
+    for (let i = 0; i < 25; i++) state = applyJudgment(state, 'NICE', -50);
+    for (let i = 0; i < 12; i++) state = applyJudgment(state, 'OKAY', -80);
+    for (let i = 0; i < 6; i++) state = applyJudgment(state, 'MISS', 0);
+    return state;
+  };
+
+  it('reproduces the reported result', () => {
+    const state = realRun();
+    expect(state.judgedCount).toBe(53);
+    expect(accuracy(state)).toBeCloseTo(231 / 371, 3);
+    expect(grade(state)).toBe('D');
+  });
+
+  it('hitting most arrows is not the same as accuracy', () => {
+    const state = realRun();
+    const hitRate = (state.judgedCount - state.counts.MISS) / state.judgedCount;
+    expect(hitRate).toBeGreaterThan(0.88);
+    expect(accuracy(state)).toBeLessThan(0.65);
+  });
+
+  it('says what the next grade needs, so it can be chased', () => {
+    expect(nextGrade(realRun())).toEqual({ grade: 'C', min: 0.7 });
+  });
+
+  it('has no next grade at the top', () => {
+    expect(nextGrade(play(Array(20).fill(['PERFECT', 0])))).toBeNull();
+  });
+
+  /** The point of the whole exercise: the bias is fixable, the skill was fine. */
+  it('offers the offset that would centre a consistently early player', () => {
+    // Mean of 10 at -20, 25 at -50 and 12 at -80 is -51.3; misses carry no
+    // timing and are excluded.
+    expect(meanDeltaMs(realRun())).toBeCloseTo(-51.3, 1);
+    expect(suggestedOffsetMs(realRun(), 0)).toBe(51);
+  });
+
+  /** And the correction has to actually move the grade, or it is theatre. */
+  it('turns the same playing into a much better grade once centred', () => {
+    // The same run with the bias removed: those NICE hits were 50 ms out, and
+    // 50 ms of that was a clock disagreement rather than the player.
+    let centred = initialScoreState();
+    for (let i = 0; i < 35; i++) centred = applyJudgment(centred, 'PERFECT', 1);
+    for (let i = 0; i < 12; i++) centred = applyJudgment(centred, 'NICE', 30);
+    for (let i = 0; i < 6; i++) centred = applyJudgment(centred, 'MISS', 0);
+
+    expect(accuracy(centred)).toBeGreaterThan(accuracy(realRun()));
+    expect(['A', 'B']).toContain(grade(centred));
+  });
+
+  it('offers the opposite for a consistently late player', () => {
+    const late = play(Array(20).fill(['NICE', 45]));
+    expect(suggestedOffsetMs(late, 0)).toBe(-45);
+  });
+
+  it('adjusts relative to an offset already in use', () => {
+    const state = play(Array(20).fill(['NICE', 30]));
+    expect(suggestedOffsetMs(state, 20)).toBe(-10);
+  });
+
+  it('suggests nothing to a player who is already centred', () => {
+    expect(suggestedOffsetMs(play(Array(20).fill(['PERFECT', 3])), 0)).toBeNull();
+  });
+
+  it('suggests nothing from too few hits to be sure', () => {
+    expect(suggestedOffsetMs(play([['NICE', 60], ['NICE', 60]]), 0)).toBeNull();
   });
 });

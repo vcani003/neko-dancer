@@ -18,6 +18,8 @@ import {
   grade,
   initialScoreState,
   meanDeltaMs,
+  nextGrade,
+  suggestedOffsetMs,
   type ScoreState,
 } from './engine/ScoreSystem.ts';
 import { chartDurationMs, LANES, type Lane } from './charts/schema.ts';
@@ -56,6 +58,14 @@ export default function App() {
   const [hud, setHud] = useState<HudView>(EMPTY_HUD);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Milliseconds added to judged time.
+   *
+   * A consistent bias is calibration, not skill — someone hitting 40 ms early
+   * every time is accurate against a clock that disagrees with them, and one
+   * number fixes it where practice never would.
+   */
+  const [offsetMs, setOffsetMs] = useState(() => Number(localStorage.getItem('neko.offset') ?? 0));
   const [name, setName] = useState(() => localStorage.getItem('neko.name') ?? '');
   // Room comes from the URL so a shared link lands people in the same place:
   // http://<address>/?room=friday
@@ -88,7 +98,14 @@ export default function App() {
   useEffect(() => {
     if (name) localStorage.setItem('neko.name', name);
     localStorage.setItem('neko.room', roomId);
-  }, [name, roomId]);
+    localStorage.setItem('neko.offset', String(offsetMs));
+  }, [name, roomId, offsetMs]);
+
+  /** Applies mid-song too, so a correction can be felt without restarting. */
+  const applyOffset = useCallback((value: number) => {
+    setOffsetMs(value);
+    clockRef.current?.setOffsetMs(value);
+  }, []);
 
   const present = useCallback((events: readonly JudgmentEvent[]) => {
     const renderer = rendererRef.current;
@@ -210,7 +227,7 @@ export default function App() {
     });
     adapterRef.current = adapter;
 
-    const clock = new GameClock(adapter as PlaybackAdapter);
+    const clock = new GameClock(adapter as PlaybackAdapter, { offsetMs });
     clockRef.current = clock;
     engineRef.current = new GameEngine(clock, chart, { windows: DEFAULT_WINDOWS });
 
@@ -223,7 +240,7 @@ export default function App() {
       setError(err instanceof Error ? err.message : 'Could not start audio.');
       setPhase('menu');
     }
-  }, [chart, room]);
+  }, [chart, room, offsetMs]);
 
   const quit = useCallback(() => {
     adapterRef.current?.dispose();
@@ -318,11 +335,38 @@ export default function App() {
                 </div>
               </div>
 
+              {/* The grade comes from accuracy, so accuracy is shown. A grade
+                  whose arithmetic is invisible just feels like a verdict. */}
+              <div className="accuracy">
+                <span className="accuracy__value mono">{(accuracy(score) * 100).toFixed(1)}%</span>
+                <span className="accuracy__label">
+                  accuracy — {score.judgedCount - score.counts.MISS} of {score.judgedCount} arrows hit,
+                  weighted by how close each was
+                </span>
+                {nextGrade(score) && (
+                  <span className="accuracy__next">
+                    {(nextGrade(score)!.min * 100).toFixed(0)}% for a {nextGrade(score)!.grade}
+                  </span>
+                )}
+              </div>
+
               <p className="hint">
                 {meanDeltaMs(score) === null
                   ? 'Nothing landed.'
                   : `Average timing ${meanDeltaMs(score)! > 0 ? '+' : ''}${meanDeltaMs(score)!.toFixed(0)} ms ${meanDeltaMs(score)! > 0 ? 'late' : 'early'}.`}
               </p>
+
+              {(() => {
+                const suggestion = suggestedOffsetMs(score, offsetMs);
+                if (suggestion === null || suggestion === offsetMs) return null;
+                const mean = meanDeltaMs(score)!;
+                return (
+                  <button onClick={() => applyOffset(suggestion)}>
+                    You were {Math.abs(mean).toFixed(0)} ms {mean > 0 ? 'late' : 'early'} —
+                    {' '}shift timing to {suggestion > 0 ? '+' : ''}{suggestion} ms
+                  </button>
+                );
+              })()}
 
               <button className="button--primary" onClick={start}>Play again</button>
               <button onClick={quit}>Menu</button>
@@ -359,6 +403,26 @@ export default function App() {
               to play with other people.
             </p>
           )}
+        </div>
+
+        <div className="card">
+          <h2 className="side__heading">Timing</h2>
+          <div className="row">
+            <span className="row__label">offset</span>
+            <span className="row__value mono">{offsetMs > 0 ? '+' : ''}{offsetMs} ms</span>
+          </div>
+          <input
+            type="range"
+            min={-150}
+            max={150}
+            step={1}
+            value={offsetMs}
+            onChange={(e) => applyOffset(Number(e.target.value))}
+          />
+          <p className="hint" style={{ marginTop: 6 }}>
+            Raise it if you keep hitting early, lower it if you keep hitting late.
+            Finish a song and it will offer the exact number.
+          </p>
         </div>
 
         <div className="card">
