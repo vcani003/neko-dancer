@@ -11,6 +11,7 @@ import {
   MAX_NAME_LENGTH,
   MAX_PLAYLIST,
   MIN_PLAYERS_FOR_REWARD,
+  MAX_TITLE_LENGTH,
 } from './protocol.mjs';
 
 /**
@@ -20,11 +21,33 @@ import {
  * control characters can corrupt a terminal or a log, and an unbounded string
  * is an easy way to spoil a room for everyone in it.
  */
-const isControlChar = (code) => code < 0x20 || code === 0x7f;
+/**
+ * Characters that have no business in a display string.
+ *
+ * The C0 range and DEL are the obvious ones — they corrupt terminals and logs,
+ * which is why this started here. The rest are just as hostile and all sit
+ * above 0x20, so a naive "is it a control character" test misses every one:
+ *
+ * - **C1 (0x80–0x9f)**, including NEL, which terminals still act on.
+ * - **Bidi overrides and isolates.** A single U+202E reverses the rendering of
+ *   everything after it, so a title can make the rest of a chat line read as
+ *   something its author never wrote.
+ * - **Zero-width characters.** Invisible, which means two titles that look
+ *   identical are different strings — and a length cap can be filled with
+ *   padding nobody can see.
+ */
+const isHostileChar = (code) =>
+  code < 0x20 ||
+  code === 0x7f ||
+  (code >= 0x80 && code <= 0x9f) ||
+  (code >= 0x200b && code <= 0x200f) ||
+  (code >= 0x202a && code <= 0x202e) ||
+  (code >= 0x2066 && code <= 0x2069) ||
+  code === 0xfeff;
 
 const sanitise = (value, limit) =>
   [...String(value ?? '')]
-    .filter((ch) => !isControlChar(ch.codePointAt(0)))
+    .filter((ch) => !isHostileChar(ch.codePointAt(0)))
     .join('')
     .trim()
     .slice(0, limit);
@@ -36,6 +59,21 @@ export function cleanName(name) {
 
 export function cleanChat(text) {
   return sanitise(text, MAX_CHAT_LENGTH);
+}
+
+/**
+ * A song title from a chart someone else wrote.
+ *
+ * Chart metadata was never sanitised, and the title reaches two places that
+ * make that expensive: a `system: true` chat line, and the room summary that
+ * goes out ten times a second. The first is the same spoof the TROUBLE message
+ * was deliberately hardened against — a client that can write system text can
+ * post official-looking announcements — and it was wide open through the title
+ * the whole time.
+ */
+export function cleanTitle(title) {
+  const cleaned = sanitise(title, MAX_TITLE_LENGTH);
+  return cleaned.length > 0 ? cleaned : 'a song';
 }
 
 export class Room {
@@ -233,11 +271,16 @@ export class Room {
       songChooser: this.songChooser(),
       // A summary only. The chart itself travels in its own message, because
       // this object is broadcast many times a second during a round.
-      song: this.chart
+      // Read defensively even though PICK_SONG now checks the same fields.
+      // This object is built on every broadcast, ten times a second, and it
+      // once took the server down by reaching through a `song` that was not
+      // there. Two independent guards, because one of them was enough to be
+      // wrong.
+      song: this.chart?.song
         ? {
-            id: this.chart.song.id,
-            title: this.chart.song.title,
-            arrows: this.chart.arrows.length,
+            id: String(this.chart.song.id ?? ''),
+            title: cleanTitle(this.chart.song.title),
+            arrows: Array.isArray(this.chart.arrows) ? this.chart.arrows.length : 0,
             pickedBy: this.pickedBy,
           }
         : null,

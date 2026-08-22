@@ -45,6 +45,16 @@ export const S2C = {
 
 export const MAX_NAME_LENGTH = 20;
 export const MAX_CHAT_LENGTH = 200;
+/**
+ * A song title, as displayed to other people.
+ *
+ * Bounded for the same reason chat is, and then one more: the room summary
+ * carries the title and is broadcast on every score update, ten times a second
+ * per player. An unbounded title is not just ugly, it is a bandwidth
+ * multiplier — a 256 KB title becomes tens of megabytes a second of outbound
+ * traffic from a single small message.
+ */
+export const MAX_TITLE_LENGTH = 100;
 export const MAX_PLAYLIST = 10;
 
 /** Sushi is only earned in a room with other people, as in the original. */

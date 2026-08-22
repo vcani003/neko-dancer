@@ -171,6 +171,44 @@ official-looking text in everyone's chat.
 
 ---
 
+## 6. A chart with no song killed the server
+
+**Found by:** a security review of the chart-library design, then confirmed by
+attacking a running server.
+
+Not a playtest finding — but it belongs here, because it is the third time the
+same shape has appeared and the pattern is now the point.
+
+```
+{"type":"pickSong","chart":{"arrows":[]}}
+```
+
+`PICK_SONG` checked that `arrows` was an array and never checked that there was
+a `song`. `Room.toJSON()`, built on every broadcast, read `chart.song.id`. One
+message, from any client on the network, and the process exited.
+
+**Why the existing error handling did not catch it.** `ws` calls the message
+listener from inside `Receiver._write`, with no `try`/`catch` on that path. A
+throw there is not an `error` event — it is an uncaught exception. The
+`wss.on('error')` and `socket.on('error')` handlers added after the payload-cap
+crash were the right fix for *that* crash and are irrelevant to this one, which
+is worth understanding rather than glossing: they catch emitted events, not
+throws from a different listener.
+
+**The three crashes so far**, all reachable in one message from an
+unauthenticated client:
+
+1. A payload cap set below the size of a real chart, with no socket error
+   handler — the protection was itself the outage.
+2. An oversized frame emitting `error` with nothing listening.
+3. This one: a field the server dereferenced without checking.
+
+Each was fixed specifically. The third one also got a barrier around the whole
+message handler, because fixing three instances of a pattern one at a time is
+how you get a fourth.
+
+---
+
 ## Pattern
 
 The first two are the same shape: **a global listener that did not ask where
@@ -185,7 +223,13 @@ The tests that exist are good at the engine and useless here. Finding these
 needed someone typing their name into a chat box, which is a thing a person
 does and a test suite never will.
 
-The later two share a different shape: **logic that was correct alone and wrong
+Number six is different again, and the most uncomfortable: **the same class of
+bug fixed three times in three places.** Each fix was correct and none of them
+generalised, because each was a patch on an instance rather than on the shape.
+The lesson is not "check your fields" — it is that when a class of failure
+recurs, the next fix has to be structural or you will be back.
+
+The middle two share a different shape: **logic that was correct alone and wrong
 in company.** `Room` readied and un-readied exactly as intended; the client
 called it in an order that could never converge. One player never revealed it,
 because with one player every order works. Some bugs only exist between

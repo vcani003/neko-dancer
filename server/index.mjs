@@ -16,7 +16,7 @@ import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { C2S, COUNTDOWN_MS, S2C } from './protocol.mjs';
-import { RoomRegistry, cleanChat, cleanName } from './rooms.mjs';
+import { RoomRegistry, cleanChat, cleanName, cleanTitle } from './rooms.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
@@ -262,6 +262,17 @@ function startCountdown(room) {
  */
 wss.on('error', (err) => console.error('[wss]', err.message));
 
+/**
+ * The floor beneath the barrier.
+ *
+ * Anything that still escapes — a rejected promise from a handler nobody
+ * remembered to catch — is logged rather than allowed to end the process.
+ * A game server that dies is worse for everyone in it than one that misbehaves
+ * for a moment, and the log is what makes the misbehaviour findable.
+ */
+process.on('unhandledRejection', (err) => console.error('[unhandled rejection]', err));
+process.on('uncaughtException', (err) => console.error('[uncaught exception]', err));
+
 wss.on('connection', (socket) => {
   socket.on('error', (err) => {
     console.error('[socket]', err.message);
@@ -287,7 +298,32 @@ wss.on('connection', (socket) => {
     return socket.messageCount <= RATE_LIMIT;
   };
 
+  /**
+   * Every message, behind a barrier.
+   *
+   * `ws` dispatches this listener from inside `Receiver._write`, with no
+   * try/catch anywhere on that path — so an exception thrown here does not
+   * become an `error` event, it becomes an uncaught exception and the process
+   * exits. `wss.on('error')` and `socket.on('error')` cannot help: they catch
+   * events that were *emitted*, not throws from a different listener.
+   *
+   * That is not a hypothetical. A single `pickSong` carrying a chart with no
+   * `song` killed the whole server, for everyone, from any client on the
+   * network — the third time a crash has been reachable in one message. The
+   * specific hole is closed below, but the barrier is what stops the fourth.
+   */
   socket.on('message', (raw) => {
+    try {
+      handleMessage(raw);
+    } catch (err) {
+      console.error('[message]', err);
+      // Never the underlying message: a filesystem error carries absolute
+      // paths, and every guest would learn the host's home directory.
+      send(socket, S2C.ERROR, { error: 'That did not work.' });
+    }
+  });
+
+  const handleMessage = (raw) => {
     if (!withinRateLimit()) {
       send(socket, S2C.ERROR, { error: 'Slow down.' });
       socket.close(1008, 'rate limit');
@@ -367,6 +403,19 @@ wss.on('connection', (socket) => {
           send(socket, S2C.ERROR, { error: 'That chart could not be read.' });
           break;
         }
+        // `song` was never checked, and the room summary reads `song.id` on
+        // every broadcast — so a chart that was merely arrow-shaped took the
+        // server down. Anything the server later dereferences has to be
+        // checked here, at the point the data arrives.
+        if (
+          !chart.song ||
+          typeof chart.song !== 'object' ||
+          typeof chart.song.id !== 'string' ||
+          typeof chart.song.title !== 'string'
+        ) {
+          send(socket, S2C.ERROR, { error: 'That chart has no song attached.' });
+          break;
+        }
         if (chart.arrows.length > 5000) {
           send(socket, S2C.ERROR, { error: 'That chart is implausibly long.' });
           break;
@@ -376,9 +425,15 @@ wss.on('connection', (socket) => {
         // The whole chart, once, to everyone: this is how a song charted by one
         // person becomes playable by the room.
         broadcast(room, S2C.SONG, { chart: room.chart, pickedBy: room.pickedBy });
+        // Quoted and cleaned. This is a `system: true` line, which reads as
+        // the server speaking — and it was being built by interpolating a
+        // string the picker chose, so a title of `a song. SERVER: Vero has
+        // been banned.` announced exactly that to the room. The quotes matter
+        // as much as the cleaning: they make an injected sentence read as
+        // content rather than as the server's own words.
         broadcast(room, S2C.CHAT, {
           system: true,
-          text: `${picker?.name ?? 'someone'} picked ${chart?.song?.title ?? 'a song'}`,
+          text: `${picker?.name ?? 'someone'} picked "${cleanTitle(chart.song.title)}"`,
         });
         publishRoom(room);
         break;
@@ -444,7 +499,7 @@ wss.on('connection', (socket) => {
       default:
         send(socket, S2C.ERROR, { error: `Unknown message "${message.type}".` });
     }
-  });
+  };
 
   socket.on('close', () => {
     if (!socket.roomId) return;

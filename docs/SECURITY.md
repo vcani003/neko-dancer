@@ -74,6 +74,51 @@ The lesson generalises. **A limit set without measuring the traffic it must
 allow is a guess**, and a guess that rejects normal use is worse than no limit
 at all — it fails closed, loudly, on the happy path.
 
+**One message that killed the server.** `pickSong` accepted any object with an
+`arrows` array and never checked that a chart had a `song`. The room summary,
+built on every broadcast, then read `this.chart.song.id`. So:
+
+    {"type":"pickSong","chart":{"arrows":[]}}
+
+took the whole process down, for everyone in every room, from any client on the
+network, with no authentication and no rate limit reached. Confirmed by
+attacking a running server, not by reading the code.
+
+The specific hole is closed — `PICK_SONG` now requires a `song` with a string
+`id` and `title`, and the summary reads defensively as well, because one of
+those guards was already supposed to be enough.
+
+**The structural half matters more.** `ws` dispatches the message listener from
+inside its own `Receiver._write`, and there is no `try`/`catch` anywhere on that
+path. An exception thrown while handling a message is therefore not an `error`
+event — it is an uncaught exception, and the process exits. Neither
+`wss.on('error')` nor `socket.on('error')` helps, because those catch events
+that were *emitted*, not throws from a different listener.
+
+That is now the third crash reachable in a single message, after the payload cap
+and the unhandled socket error. Three of a kind is a pattern, not a coincidence,
+so the handler sits behind a barrier that logs and replies rather than dying,
+with `unhandledRejection` and `uncaughtException` beneath it as a floor. The
+reply is deliberately generic: a filesystem error carries absolute paths, and
+forwarding one would tell every guest the host's home directory.
+
+**Chart metadata was never sanitised.** A song title travelled unbounded and
+uncleaned into a `system: true` chat line — the exact spoof the TROUBLE message
+was hardened against, wide open by another route the whole time. A title of
+`a song. SERVER: Vero has been banned.` announced precisely that to the room.
+Titles are now cleaned, capped at 100 characters and **quoted**, so an injected
+sentence reads as a name rather than as the server speaking.
+
+The cap also closes an amplifier: the title rides in the room summary, which
+goes out ten times a second per player. A quarter-megabyte title in a single
+30 KB message became tens of megabytes a second of outbound traffic.
+
+The character filter was widened at the same time. It caught C0 and DEL and
+missed everything above `0x20` that is just as hostile: C1 controls, bidi
+overrides — one U+202E reverses the rendering of the rest of a line — and
+zero-width characters, which make two visually identical titles different
+strings and fill a length cap invisibly.
+
 **A room any player could brick.** A round ended only when every player
 reported finishing. A client that never reported — a crashed tab, a song that
 failed to load, or simply someone who picked a song, readied, and walked away —

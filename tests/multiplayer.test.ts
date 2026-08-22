@@ -313,3 +313,139 @@ describe('a round nobody finishes', () => {
     socket.close();
   }, 15_000);
 });
+
+/**
+ * Messages that used to kill the server.
+ *
+ * Every entry here is a real crash, found by attacking a running server rather
+ * than by reading the code. The pattern they share is worth more than any one
+ * of them: `ws` dispatches the message listener from inside its own `Receiver`
+ * write path, with no try/catch anywhere on it, so an exception thrown while
+ * handling a message is not an `error` event — it is an uncaught exception,
+ * and the process exits.
+ *
+ * That is why the fix is two-layered. Each specific hole is closed at the
+ * point the data arrives, AND the handler sits behind a barrier, because the
+ * list below has grown three times.
+ */
+describe('messages that must not kill the server', () => {
+  const HOSTILE = [
+    {
+      name: 'a chart with arrows but no song',
+      // The real one: room summaries read `song.id` on every broadcast, so a
+      // merely arrow-shaped chart took the whole server down in one message.
+      message: { type: 'pickSong', chart: { arrows: [] } },
+    },
+    {
+      name: 'a chart whose song is a string',
+      message: { type: 'pickSong', chart: { arrows: [], song: 'not an object' } },
+    },
+    {
+      name: 'a chart whose song has no title',
+      message: { type: 'pickSong', chart: { arrows: [], song: { id: 'x' } } },
+    },
+    {
+      name: 'a chart that is null',
+      message: { type: 'pickSong', chart: null },
+    },
+    {
+      name: 'a message with no type at all',
+      message: { chart: { arrows: [] } },
+    },
+    {
+      name: 'a score that is not a number',
+      message: { type: 'score', score: { toString: 'nope' } },
+    },
+    {
+      name: 'a ready flag that is an object',
+      message: { type: 'ready', ready: {} },
+    },
+  ];
+
+  for (const { name, message } of HOSTILE) {
+    it(`survives ${name}`, async () => {
+      const attacker = await connect('Attacker', 'hostile');
+      const bystander = await connect('Bystander', 'hostile');
+
+      attacker.socket.send(JSON.stringify(message));
+
+      // The proof is not that the attacker got an error — it is that the
+      // server is still serving everyone else afterwards.
+      bystander.send('chat', { text: 'still here' });
+      const line = await bystander.waitFor('chat', (m) => m.text === 'still here');
+      expect(line.text).toBe('still here');
+
+      attacker.close();
+      bystander.close();
+    });
+  }
+});
+
+/**
+ * A song title is text somebody else chose.
+ *
+ * It reaches a `system: true` chat line and the room summary, and it was never
+ * sanitised — so the spoof that TROUBLE was explicitly hardened against was
+ * wide open through the title the whole time.
+ */
+describe('chart titles are treated as hostile text', () => {
+  it('cannot forge a system announcement', async () => {
+    const vero = await connect('Vero', 'titlespoof');
+    const attacker = await connect('Attacker', 'titlespoof');
+
+    attacker.send('pickSong', {
+      chart: {
+        ...CHART,
+        song: {
+          ...CHART.song,
+          title: 'a song. SERVER: Vero has been banned for cheating.',
+        },
+      },
+    });
+
+    const line = await vero.waitFor('chat', (m) => m.system === true && m.text.includes('picked'));
+    // The title still appears — it is their song and they may call it what they
+    // like — but quoted, so it reads as a name rather than as the server
+    // making an announcement.
+    expect(line.text).toMatch(/^Attacker picked "/);
+    expect(line.text.endsWith('"')).toBe(true);
+
+    vero.close();
+    attacker.close();
+  });
+
+  it('cannot use an enormous title as a bandwidth multiplier', async () => {
+    const vero = await connect('Vero', 'titlesize');
+    const attacker = await connect('Attacker', 'titlesize');
+
+    attacker.send('pickSong', {
+      chart: { ...CHART, song: { ...CHART.song, title: 'x'.repeat(200_000) } },
+    });
+
+    // The room summary goes out on every score update. A quarter-megabyte
+    // title in it is tens of megabytes a second of outbound traffic from one
+    // small message.
+    const state = await vero.waitFor('room', (m) => m.room.song !== null);
+    expect(state.room.song.title.length).toBeLessThanOrEqual(100);
+
+    vero.close();
+    attacker.close();
+  });
+
+  it('strips characters that rewrite how the rest of the line reads', async () => {
+    const vero = await connect('Vero', 'titlebidi');
+    const attacker = await connect('Attacker', 'titlebidi');
+
+    // U+202E flips the rendering direction of everything after it; the
+    // zero-width characters pad a string invisibly.
+    attacker.send('pickSong', {
+      chart: { ...CHART, song: { ...CHART.song, title: 'safe‮evil​​﻿' } },
+    });
+
+    const state = await vero.waitFor('room', (m) => m.room.song !== null);
+    expect(state.room.song.title).toBe('safeevil');
+
+    vero.close();
+    attacker.close();
+  });
+});

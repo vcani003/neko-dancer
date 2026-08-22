@@ -27,7 +27,13 @@ import { TUTORIAL_CHART } from './charts/library.ts';
 import { ClickTrackAdapter } from './playback/ClickTrackAdapter.ts';
 import { YouTubeAdapter } from './playback/YouTubeAdapter.ts';
 import type { PlaybackAdapter } from './playback/PlaybackAdapter.ts';
-import { LocalChartStore, chartKey, type StoredChart } from './charts/ChartStore.ts';
+import {
+  LocalChartStore,
+  builtInRecord,
+  receivedRecord,
+  songKey,
+  type StoredChart,
+} from './charts/ChartStore.ts';
 import { validateChart } from './charts/validator.ts';
 import { YouTubePlaybackError } from './playback/YouTubeAdapter.ts';
 import AddSong from './ui/AddSong.tsx';
@@ -61,6 +67,18 @@ const EMPTY_HUD: HudView = {
   playbackTimeMs: 0,
   durationMs: 0,
 };
+
+/**
+ * Are these the same beatmap?
+ *
+ * Compared by content rather than by identity, because the same chart reaches
+ * this browser under different names — shipped with the game, sent by the
+ * room, saved locally after a round — and three rows for one song is worse
+ * than the cost of stringifying twenty kilobytes once per pick.
+ */
+function sameChart(a: Chart, b: Chart): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 
 /**
  * Which of the room's fixed explanations fits this failure.
@@ -131,7 +149,8 @@ export default function App() {
    */
   const store = useMemo(() => new LocalChartStore(), []);
   const [saved, setSaved] = useState<StoredChart[]>([]);
-  const [selectedKey, setSelectedKey] = useState<string>(chartKey(TUTORIAL_CHART));
+  const tutorial = useMemo(() => builtInRecord(TUTORIAL_CHART), []);
+  const [selectedId, setSelectedId] = useState<string>(tutorial.id);
 
   const refreshCharts = useCallback(() => {
     void store.list().then(setSaved);
@@ -141,17 +160,17 @@ export default function App() {
   /**
    * The built-in chart first, then everything saved here.
    *
-   * De-duplicated by key, because a chart can arrive from two directions at
+   * De-duplicated by id, because a chart can arrive from two directions at
    * once: shipped with the game and saved locally after the room played it.
    * Without this the tutorial appears twice the moment anyone picks it.
    */
   const allCharts = useMemo(() => {
-    const byKey = new Map<string, Chart>();
-    for (const c of [TUTORIAL_CHART, ...saved.map((s) => s.chart)]) {
-      if (!byKey.has(chartKey(c))) byKey.set(chartKey(c), c);
+    const byId = new Map<string, StoredChart>();
+    for (const record of [tutorial, ...saved]) {
+      if (!byId.has(record.id)) byId.set(record.id, record);
     }
-    return [...byKey.values()];
-  }, [saved]);
+    return [...byId.values()];
+  }, [saved, tutorial]);
   /**
    * The room's song, which wins over any local selection while connected.
    *
@@ -159,7 +178,7 @@ export default function App() {
    * with it, so someone who has never charted this song can still play it.
    * Charts are small JSON, which is what makes that free.
    */
-  const [roomChart, setRoomChart] = useState<Chart | null>(null);
+  const [roomChart, setRoomChart] = useState<StoredChart | null>(null);
 
   /**
    * Take the room's song — after checking it.
@@ -183,20 +202,34 @@ export default function App() {
         return;
       }
       const next = incoming as Chart;
-      setRoomChart(next);
-      setSelectedKey(chartKey(next));
-      void store.put(next, authoredBy).then(refreshCharts).catch(() => {});
+      // Don't keep a second copy of something already held. The room re-sends
+      // its chart on every pick, and before charts had identities that meant
+      // the built-in tutorial got saved back as a duplicate of itself the
+      // first time anyone played it.
+      const identical = allCharts.find(
+        (held) => held.songKey === songKey(next) && sameChart(held.chart, next),
+      );
+      if (identical) {
+        setRoomChart(identical);
+        setSelectedId(identical.id);
+        return;
+      }
+      const record = receivedRecord(next, authoredBy);
+      setRoomChart(record);
+      setSelectedId(record.id);
+      void store.save(record).then(refreshCharts).catch(() => {});
     },
-    [store, refreshCharts],
+    [store, refreshCharts, allCharts],
   );
 
-  const chart = useMemo(
-    () => roomChart ?? allCharts.find((c) => chartKey(c) === selectedKey) ?? TUTORIAL_CHART,
-    [roomChart, allCharts, selectedKey],
+  const active = useMemo(
+    () => roomChart ?? allCharts.find((s) => s.id === selectedId) ?? tutorial,
+    [roomChart, allCharts, selectedId, tutorial],
   );
+  const chart = active.chart;
 
   /** Whatever is actually loaded, however it got here. */
-  const activeKey = useMemo(() => chartKey(chart), [chart]);
+  const activeKey = active.id;
 
   /**
    * The list to show. Normally just what this browser holds — but a chart the
@@ -204,7 +237,7 @@ export default function App() {
    * follows, and whether or not that save succeeds.
    */
   const songChoices = useMemo(() => {
-    if (!roomChart || allCharts.some((c) => chartKey(c) === activeKey)) return allCharts;
+    if (!roomChart || allCharts.some((s) => s.id === activeKey)) return allCharts;
     return [roomChart, ...allCharts];
   }, [roomChart, allCharts, activeKey]);
 
@@ -577,18 +610,18 @@ export default function App() {
               </p>
 
               <div className="songlist">
-                {songChoices.map((c) => {
-                  const key = chartKey(c);
+                {songChoices.map((record) => {
+                  const c = record.chart;
                   return (
                     <button
-                      key={key}
-                      className={`songrow ${key === activeKey ? 'is-active' : ''}`}
+                      key={record.id}
+                      className={`songrow ${record.id === activeKey ? 'is-active' : ''}`}
                       onClick={() => {
                         // Clear first so the click feels instant; if we are in
                         // a room the server echoes the pick straight back and
                         // sets it again, for everyone at once.
                         setRoomChart(null);
-                        setSelectedKey(key);
+                        setSelectedId(record.id);
                         // Picking is its own action, deliberately not bundled
                         // into "I'm ready". Picking un-readies the room — so
                         // when the two were one button, every player who
@@ -603,6 +636,10 @@ export default function App() {
                         <span className="songrow__meta">
                           {c.arrows.length} arrows · {c.analysis.bpm.toFixed(0)} BPM ·{' '}
                           {c.source === 'generated' ? 'tapped' : 'hand-written'}
+                          {record.author !== 'built-in' && ` · v${record.version}`}
+                          {record.author !== 'built-in' && record.authoredBy
+                            ? ` · by ${record.authoredBy}`
+                            : ''}
                         </span>
                       </span>
                     </button>
@@ -689,9 +726,11 @@ export default function App() {
             <AddSong
               onCancel={() => setPhase('menu')}
               onCharted={(newChart) => {
-                void store.put(newChart, name || undefined).then(() => {
+                // `add` rather than `save`: a re-tap of a song you already
+                // charted becomes your v2 instead of destroying your v1.
+                void store.add(newChart, name || undefined).then((stored) => {
                   refreshCharts();
-                  setSelectedKey(chartKey(newChart));
+                  setSelectedId(stored.id);
                   setPhase('menu');
                 });
               }}
@@ -716,9 +755,9 @@ export default function App() {
                   }),
                   { song: chart.song, plan, difficulty: 'normal' },
                 );
-                void store.put(rebuilt, name || undefined).then(() => {
+                void store.add(rebuilt, name || undefined).then((stored) => {
                   refreshCharts();
-                  setSelectedKey(chartKey(rebuilt));
+                  setSelectedId(stored.id);
                   setPhase('menu');
                 });
               }}

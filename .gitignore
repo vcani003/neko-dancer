@@ -6,3 +6,12 @@ dist
 
 # Player-supplied audio. Store charts, not recordings.
 public/audio/
+
+# Secrets, listed before the first one exists rather than after.
+.env
+.env.*
+
+# The chart library: files written by whoever is on the network. Guest-supplied
+# text must not be swept into the host's repository by `git add -A`, and git
+# history is permanent.
+charts/
