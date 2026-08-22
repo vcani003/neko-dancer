@@ -439,6 +439,46 @@ wss.on('connection', (socket) => {
         break;
       }
 
+      case C2S.RENAME: {
+        if (!socket.roomId) break;
+        const room = rooms.get(socket.roomId);
+        // Renaming used to be impossible: the name was sent once, at JOIN, so
+        // editing the box after connecting changed nothing anyone else saw —
+        // and two players called "neko" cannot tell whose ready is whose.
+        const change = room.rename(socket.playerId, message.name);
+        if (change) {
+          broadcast(room, S2C.CHAT, {
+            system: true,
+            text: `${change.from} is now ${change.to}`,
+          });
+          publishRoom(room);
+        }
+        break;
+      }
+
+      case C2S.CAN_PLAY: {
+        if (!socket.roomId) break;
+        const room = rooms.get(socket.roomId);
+        // Tied to a song id, so a late answer about the previous song cannot
+        // mark someone unable to play the current one.
+        if (!room.chart || String(message.songId) !== String(room.chart.song?.id ?? '')) break;
+        const ok = message.ok === true;
+        room.setCanPlay(socket.playerId, ok, TROUBLE_REASONS[message.reason] ?? TROUBLE_REASONS.unknown);
+        if (!ok) {
+          const player = room.players.get(socket.playerId);
+          broadcast(room, S2C.CHAT, {
+            system: true,
+            text: `${player?.name ?? 'Someone'} cannot play this song — ${
+              TROUBLE_REASONS[message.reason] ?? TROUBLE_REASONS.unknown
+            }`,
+          });
+        }
+        publishRoom(room);
+        // Someone dropping out can be the thing that makes everyone else ready.
+        if (room.everyoneReady()) startCountdown(room);
+        break;
+      }
+
       case C2S.READY: {
         if (!socket.roomId) break;
         const room = rooms.get(socket.roomId);

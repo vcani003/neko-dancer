@@ -35,7 +35,7 @@ import {
   type StoredChart,
 } from './charts/ChartStore.ts';
 import { validateChart } from './charts/validator.ts';
-import { YouTubePlaybackError } from './playback/YouTubeAdapter.ts';
+import { YouTubePlaybackError, checkVideoPlayable } from './playback/YouTubeAdapter.ts';
 import AddSong from './ui/AddSong.tsx';
 import SectionEditor from './ui/SectionEditor.tsx';
 import { flatPlan, type SongPlan } from './charts/SongPlan.ts';
@@ -436,6 +436,52 @@ export default function App() {
   }, [room.signal, acceptRoomChart]);
 
   /**
+   * Tell the room what this browser is called, when that changes.
+   *
+   * The name used to be sent once, at JOIN, so editing the box after
+   * connecting changed nothing anyone else could see — two windows both showed
+   * as "neko" and there was no way to tell whose ready was whose. Debounced,
+   * because this fires on every keystroke.
+   */
+  useEffect(() => {
+    if (room.connection !== 'open' || !room.playerId) return;
+    const id = window.setTimeout(() => {
+      room.send(C2S.RENAME, { name: name || 'neko' });
+    }, 400);
+    return () => window.clearTimeout(id);
+  }, [name, room.connection, room.playerId, room.send]);
+
+  /**
+   * Find out whether the room's song plays HERE, before anyone counts down.
+   *
+   * Embedding, region and age restrictions differ per viewer, so this is a
+   * question only this browser can answer. Asking it in the lobby turns "the
+   * video was unavailable" three seconds into a countdown into a line in the
+   * player list that everybody can see and act on.
+   */
+  const roomSongId = room.room?.song?.id ?? null;
+  const roomVideoId =
+    chart.song.playback.provider === 'youtube' ? chart.song.playback.videoId : null;
+  useEffect(() => {
+    if (!roomSongId || !roomVideoId || room.connection !== 'open') return;
+    let cancelled = false;
+    void checkVideoPlayable(roomVideoId).then((result) => {
+      // The room may have moved on to a different song while this was running;
+      // the songId sent with the answer is what lets the server ignore a late
+      // reply about a song nobody is on any more.
+      if (cancelled) return;
+      room.send(C2S.CAN_PLAY, {
+        songId: roomSongId,
+        ok: result.ok,
+        reason: troubleReason(result.error ?? null),
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [roomSongId, roomVideoId, room.connection, room.send]);
+
+  /**
    * The room picked a song. Everyone plays it, including whoever has never
    * heard of it — the chart travels with the pick.
    */
@@ -541,12 +587,17 @@ export default function App() {
   useEffect(() => () => adapterRef.current?.dispose(), []);
 
   const me = room.room?.players.find((p) => p.id === room.playerId);
+  // Players the song will not load for are not waited on — they are sitting
+  // this round out, and counting them would mean one restricted video stops
+  // everybody.
   const waitingOn =
     room.room && room.room.players.length > 1 && room.room.round.state === 'lobby'
       ? room.room.players
-          .filter((p) => !p.ready)
+          .filter((p) => !p.ready && p.canPlay !== 'no')
           .map((p) => (p.id === room.playerId ? `${p.name} (you)` : p.name))
       : [];
+  const sittingOut = room.room?.players.filter((p) => p.canPlay === 'no') ?? [];
+  const iCannotPlay = me?.canPlay === 'no';
 
   useEffect(() => {
     const roster = room.room?.players ?? [];
@@ -658,13 +709,15 @@ export default function App() {
               {room.connection === 'open' && room.room && (
                 <div className="readybar">
                   <span className="readybar__count mono">
-                    {room.room.players.filter((p) => p.ready).length} / {room.room.players.length} ready
+                    {room.room.players.filter((p) => p.ready).length} /{' '}
+                    {room.room.players.filter((p) => p.canPlay !== 'no').length} ready
                   </span>
                   <button
                     className={me?.ready ? '' : 'button--primary'}
+                    disabled={iCannotPlay}
                     onClick={() => room.send(C2S.READY, { ready: !me?.ready })}
                   >
-                    {me?.ready ? 'Not ready' : "I'm ready"}
+                    {iCannotPlay ? 'Cannot play this' : me?.ready ? 'Not ready' : "I'm ready"}
                   </button>
                 </div>
               )}
@@ -682,6 +735,14 @@ export default function App() {
               {waitingOn.length > 0 && (
                 <p className="hint" style={{ fontSize: '0.72rem' }}>
                   Waiting on {waitingOn.join(', ')}.
+                </p>
+              )}
+
+              {sittingOut.length > 0 && (
+                <p className="hint" style={{ fontSize: '0.72rem', color: 'var(--bad)' }}>
+                  {sittingOut.map((p) => p.name).join(', ')}{' '}
+                  {sittingOut.length === 1 ? 'cannot' : 'cannot'} play this video and will sit
+                  this round out. {sittingOut[0]?.cannotPlayReason}
                 </p>
               )}
 
@@ -898,6 +959,9 @@ export default function App() {
                         without this the list is three identical rows and there
                         is no way to tell which ready is yours. */}
                     {player.id === room.playerId && <span className="board__you"> (you)</span>}
+                    {player.canPlay === 'no' && room.room?.round.state === 'lobby' && (
+                      <span className="board__blocked"> can't play</span>
+                    )}
                     {player.ready && room.room?.round.state === 'lobby' && (
                       <span className="board__ready"> ready</span>
                     )}

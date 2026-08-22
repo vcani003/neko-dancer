@@ -17,6 +17,10 @@ export const C2S = {
   FINISH: 'finish',
   READY: 'ready',
   PICK_SONG: 'pickSong',
+  /** Change your display name without leaving and rejoining. */
+  RENAME: 'rename',
+  /** "This is whether the room's song plays for me." Sent before readying. */
+  CAN_PLAY: 'canPlay',
   /** "The song would not play for me." A code, never a message — see the server. */
   TROUBLE: 'trouble',
   QUEUE_SONG: 'queueSong',
@@ -48,6 +52,9 @@ export interface RoomPlayer {
   ready: boolean;
   finished: boolean;
   sushi: number;
+  /** 'unknown' until this player's browser has actually tried the song. */
+  canPlay: 'unknown' | 'yes' | 'no';
+  cannotPlayReason: string | null;
 }
 
 export interface RoomRound {

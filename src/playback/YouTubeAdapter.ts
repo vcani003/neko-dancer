@@ -147,6 +147,94 @@ function loadApi(): Promise<YouTubeApi> {
   return apiPromise;
 }
 
+/** What a preflight found out about a video, without playing it to anyone. */
+export interface VideoCheck {
+  ok: boolean;
+  /** Absent when ok. */
+  error?: YouTubePlaybackError;
+}
+
+/**
+ * Can this browser play this video at all?
+ *
+ * Loads the video into a hidden, muted player, waits for either `onReady` or
+ * an error, and throws the player away. Nothing is shown and nothing is heard.
+ *
+ * The point is WHEN this runs: a restriction discovered during the countdown
+ * is a surprise that has already wasted everyone's time, while the same fact
+ * discovered in the lobby is just a row in the player list. Restrictions are
+ * per-viewer — region, age, and the uploader's embedding setting — so this has
+ * to be answered by each browser rather than looked up once.
+ *
+ * `onReady` is not the end of it: a video can report ready and then fail, which
+ * is exactly what an embedding-blocked video does. Hence the settle window.
+ */
+export async function checkVideoPlayable(
+  videoId: string,
+  settleMs = 2500,
+): Promise<VideoCheck> {
+  let api: YouTubeApi;
+  try {
+    api = await loadApi();
+  } catch {
+    // Unreachable API is not the video's fault, and must not be reported as
+    // "this song is blocked for you" — that would be a lie that outlives the
+    // network blip which caused it.
+    return { ok: true };
+  }
+
+  const mount = document.createElement('div');
+  mount.setAttribute('aria-hidden', 'true');
+  mount.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px';
+  document.body.appendChild(mount);
+
+  const created: YouTubePlayer[] = [];
+  try {
+    return await new Promise<VideoCheck>((resolve) => {
+      let settled = false;
+      const finish = (result: VideoCheck) => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+
+      // A check that never answers would leave the lobby waiting forever.
+      const giveUp = window.setTimeout(() => finish({ ok: true }), settleMs + 8000);
+
+      try {
+        created.push(new api.Player(mount, {
+          videoId,
+          playerVars: { controls: 0, playsinline: 1, origin: window.location.origin },
+          events: {
+            onReady: () => {
+              window.setTimeout(() => {
+                window.clearTimeout(giveUp);
+                finish({ ok: true });
+              }, settleMs);
+            },
+            onError: (event: { data: number }) => {
+              window.clearTimeout(giveUp);
+              const { message, hint } = describeYouTubeError(event.data);
+              finish({ ok: false, error: new YouTubePlaybackError(event.data, message, hint) });
+            },
+          },
+        }));
+      } catch {
+        window.clearTimeout(giveUp);
+        const { message, hint } = describeYouTubeError(2);
+        finish({ ok: false, error: new YouTubePlaybackError(2, message, hint) });
+      }
+    });
+  } finally {
+    try {
+      created[0]?.destroy();
+    } catch {
+      // A player that will not tear down must not break the check that used it.
+    }
+    mount.remove();
+  }
+}
+
 export interface YouTubeAdapterOptions {
   videoId: string;
   /** The element the player is mounted into. It must stay visible. */

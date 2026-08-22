@@ -449,3 +449,137 @@ describe('chart titles are treated as hostile text', () => {
     attacker.close();
   });
 });
+
+/**
+ * One person's blocked video must not stop the room.
+ *
+ * Reported after a real session: a video played for the host and returned
+ * "the uploader does not allow this video to play outside YouTube" for someone
+ * else. They could not ready, so `everyoneReady()` was never true, so nobody
+ * played — one restricted video held three people hostage.
+ */
+describe('a player the video will not load for', () => {
+  it('is skipped rather than waited for', async () => {
+    const vero = await connect('Vero', 'skip');
+    const friend = await connect('Friend', 'skip');
+
+    vero.send('pickSong', { chart: CHART });
+    await friend.waitFor('song');
+
+    // Friend's browser reports the video is blocked for them.
+    friend.send('canPlay', { songId: CHART.song.id, ok: false, reason: 'embedBlocked' });
+    await vero.waitFor('room', (m) => m.room.players.some((p: any) => p.canPlay === 'no'));
+
+    // Vero alone is now the whole round, and readying starts it.
+    vero.send('ready', { ready: true });
+    const round = await vero.waitFor('round', (m) => m.round.state === 'countdown');
+    expect(round.round.countdownMs).toBeGreaterThan(0);
+
+    vero.close();
+    friend.close();
+  });
+
+  it('is announced, so nobody has to guess who is missing', async () => {
+    const vero = await connect('Vero', 'announce');
+    const friend = await connect('Friend', 'announce');
+
+    vero.send('pickSong', { chart: CHART });
+    await friend.waitFor('song');
+    friend.send('canPlay', { songId: CHART.song.id, ok: false, reason: 'embedBlocked' });
+
+    const line = await vero.waitFor('chat', (m) => m.system === true && m.text.includes('cannot play'));
+    expect(line.text).toContain('Friend');
+    expect(line.text).toMatch(/uploader/i);
+
+    vero.close();
+    friend.close();
+  });
+
+  it('starts the round the moment the last able player is ready', async () => {
+    const vero = await connect('Vero', 'lastable');
+    const friend = await connect('Friend', 'lastable');
+
+    vero.send('pickSong', { chart: CHART });
+    await friend.waitFor('song');
+    vero.send('ready', { ready: true });
+
+    // Vero is already ready; Friend dropping out is what completes the room.
+    friend.send('canPlay', { songId: CHART.song.id, ok: false, reason: 'embedBlocked' });
+
+    const round = await vero.waitFor('round', (m) => m.round.state === 'countdown');
+    expect(round.round.state).toBe('countdown');
+
+    vero.close();
+    friend.close();
+  });
+
+  /** A room where the song works for nobody must not start a round with itself. */
+  it('does not start a round nobody can play', async () => {
+    const vero = await connect('Vero', 'nobody');
+    vero.send('pickSong', { chart: CHART });
+    await vero.waitFor('song');
+    vero.send('canPlay', { songId: CHART.song.id, ok: false, reason: 'embedBlocked' });
+    vero.send('ready', { ready: true });
+
+    await new Promise((r) => setTimeout(r, 600));
+    const rounds = vero.received.filter((m) => m.type === 'round');
+    expect(rounds).toHaveLength(0);
+
+    vero.close();
+  });
+
+  /** A late answer about the previous song must not disqualify anyone. */
+  it('ignores an answer about a song the room has moved on from', async () => {
+    const vero = await connect('Vero', 'stale');
+    const friend = await connect('Friend', 'stale');
+
+    vero.send('pickSong', { chart: CHART });
+    await friend.waitFor('song');
+    friend.send('canPlay', { songId: 'youtube:some-old-song', ok: false, reason: 'embedBlocked' });
+
+    await new Promise((r) => setTimeout(r, 400));
+    const latest = [...vero.received].reverse().find((m) => m.type === 'room');
+    expect(latest.room.players.every((p: any) => p.canPlay !== 'no')).toBe(true);
+
+    vero.close();
+    friend.close();
+  });
+});
+
+/**
+ * Two windows both called "neko" cannot be told apart, and the name was only
+ * ever sent at JOIN — so editing it after connecting changed nothing anyone
+ * else saw.
+ */
+describe('renaming', () => {
+  it('changes the name everyone else sees', async () => {
+    const vero = await connect('Vero', 'rename');
+    const friend = await connect('Friend', 'rename');
+
+    friend.send('rename', { name: 'meowm' });
+
+    const state = await vero.waitFor('room', (m) =>
+      m.room.players.some((p: any) => p.name === 'meowm'),
+    );
+    expect(state.room.players.map((p: any) => p.name)).toContain('meowm');
+
+    vero.close();
+    friend.close();
+  });
+
+  it('sanitises a new name like any other', async () => {
+    const vero = await connect('Vero', 'renameclean');
+    const attacker = await connect('Attacker', 'renameclean');
+
+    attacker.send('rename', { name: 'x'.repeat(200) });
+
+    const state = await vero.waitFor('room', (m) =>
+      m.room.players.some((p: any) => p.name.startsWith('x')),
+    );
+    const renamed = state.room.players.find((p: any) => p.name.startsWith('x'));
+    expect(renamed.name.length).toBeLessThanOrEqual(20);
+
+    vero.close();
+    attacker.close();
+  });
+});

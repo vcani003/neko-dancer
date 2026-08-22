@@ -104,6 +104,9 @@ export class Room {
       ready: false,
       finished: false,
       sushi: 0,
+      /** 'unknown' until their browser has actually tried the current song. */
+      canPlay: 'unknown',
+      cannotPlayReason: null,
     };
     this.players.set(id, player);
     return player;
@@ -149,6 +152,11 @@ export class Room {
         ready: p.ready,
         finished: p.finished,
         sushi: p.sushi,
+        // Built field by field, never spread. A player object may gain private
+        // state later, and a spread here would broadcast it to the room ten
+        // times a second.
+        canPlay: p.canPlay ?? 'unknown',
+        cannotPlayReason: p.cannotPlayReason ?? null,
       }));
   }
 
@@ -188,7 +196,31 @@ export class Room {
   setChart(chart, pickedBy = null) {
     this.chart = chart ?? null;
     this.pickedBy = pickedBy;
-    for (const player of this.players.values()) player.ready = false;
+    for (const player of this.players.values()) {
+      player.ready = false;
+      // Whether the last song played for you says nothing about this one.
+      player.canPlay = 'unknown';
+      player.cannotPlayReason = null;
+    }
+  }
+
+  /** Record whether a player's browser can actually play the current song. */
+  setCanPlay(id, ok, reason) {
+    const player = this.players.get(id);
+    if (!player) return;
+    player.canPlay = ok ? 'yes' : 'no';
+    player.cannotPlayReason = ok ? null : reason;
+    // Someone who cannot play is not going to press ready, and must not be
+    // left holding a ready flag from before the song changed.
+    if (!ok) player.ready = false;
+  }
+
+  rename(id, name) {
+    const player = this.players.get(id);
+    if (!player) return null;
+    const previous = player.name;
+    player.name = cleanName(name);
+    return player.name === previous ? null : { from: previous, to: player.name };
   }
 
   setReady(id, ready) {
@@ -197,15 +229,27 @@ export class Room {
   }
 
   /**
-   * Everyone present has said yes, and there is something to play.
+   * Everyone who CAN play has said yes, and there is something to play.
    *
-   * Requires at least one player so an empty room cannot start a round with
-   * itself, which `every` on an empty map would otherwise happily allow.
+   * Players whose browser has told us the video will not load are skipped
+   * rather than waited for. Otherwise one person with a restricted video holds
+   * the whole room hostage: they cannot ready, so the countdown never fires,
+   * and nobody else can play either.
+   *
+   * Requires at least one able player, so an empty room — or a room where the
+   * video works for nobody — cannot start a round with itself, which `every`
+   * on an empty collection would otherwise happily allow.
    */
   everyoneReady() {
-    if (this.players.size === 0) return false;
     if (!this.chart) return false;
-    return [...this.players.values()].every((p) => p.ready);
+    const able = [...this.players.values()].filter((p) => p.canPlay !== 'no');
+    if (able.length === 0) return false;
+    return able.every((p) => p.ready);
+  }
+
+  /** Who is in the round: everyone the song actually works for. */
+  playersWhoCanPlay() {
+    return [...this.players.values()].filter((p) => p.canPlay !== 'no');
   }
 
   /**

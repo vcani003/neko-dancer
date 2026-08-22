@@ -13,6 +13,16 @@ export const C2S = {
   FINISH: 'finish',
   READY: 'ready',
   PICK_SONG: 'pickSong',
+  /** Change your display name without leaving and rejoining. */
+  RENAME: 'rename',
+  /**
+   * "I have checked, and this is whether the video plays for me."
+   *
+   * Sent when the room's song changes, before anyone readies. A video that
+   * one player cannot embed is a fact about the lobby, not a surprise to be
+   * discovered three seconds into a countdown.
+   */
+  CAN_PLAY: 'canPlay',
   /**
    * "The song would not play for me."
    *
