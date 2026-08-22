@@ -37,7 +37,20 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 // Every one of these exists because the alternative is unbounded. A room this
 // small does not need to survive a determined attacker, but it should not fall
 // over to an accident or a bored guest either.
-const MAX_MESSAGE_BYTES = 4 * 1024;
+/**
+ * Message size cap.
+ *
+ * Sized against the largest thing the game legitimately sends, which is a
+ * chart: a 366-arrow song is about 21 KB of JSON, and a long dense one can be
+ * several times that. The 4 KB this started at was smaller than any real chart,
+ * so pressing "I'm ready" crashed the server — a limit that rejects normal
+ * traffic is not protection, it is an outage with a rationale.
+ *
+ * The real guard against an absurd chart is the arrow-count check on
+ * PICK_SONG, which bounds what the message can contain rather than only how
+ * big it is.
+ */
+const MAX_MESSAGE_BYTES = 512 * 1024;
 const MAX_PLAYERS_PER_ROOM = 16;
 const MAX_ROOMS = 32;
 /** Messages per socket per window, beyond which the socket is closed. */
@@ -179,7 +192,24 @@ function startCountdown(room) {
   );
 }
 
+/**
+ * A socket-level error must never reach Node's unhandled 'error' path.
+ *
+ * `ws` emits 'error' on the socket for protocol violations — an oversized
+ * frame, a malformed one — and an unhandled 'error' event throws, which takes
+ * the whole process down. That is how a payload cap became a way to kill the
+ * server from any client, which is precisely backwards.
+ */
+wss.on('error', (err) => console.error('[wss]', err.message));
+
 wss.on('connection', (socket) => {
+  socket.on('error', (err) => {
+    console.error('[socket]', err.message);
+    // The connection is already unusable; closing it keeps one bad client from
+    // affecting anyone else in the room.
+    socket.close(1011, 'socket error');
+  });
+
   socket.playerId = `p${nextId++}`;
   socket.roomId = null;
   socket.messageCount = 0;

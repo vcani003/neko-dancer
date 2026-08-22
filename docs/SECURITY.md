@@ -47,11 +47,32 @@ used a plain `startsWith`, which a sibling directory named `dist-anything`
 would have satisfied — the classic version of this bug, and it was present.
 Malformed percent-encoding is now rejected rather than thrown on.
 
-**Unbounded input.** Messages are capped at 4 KB, sockets at 40 messages per
+**Unbounded input.** Messages are capped at 512 KB, sockets at 40 messages per
 2 seconds before being closed, rooms at 16 players, the server at 32 rooms, and
 chat history at 60 lines. Every one of these exists because the alternative was
 unbounded, and unbounded loses to an accident long before it loses to an
 attacker.
+
+**A cap that was itself an outage.** The message limit started at 4 KB, which is
+smaller than any real chart — a 366-arrow song is about 21 KB — so pressing
+"I'm ready" tripped it. Worse, `ws` reports an oversized frame by emitting
+`error` on the socket, and with no handler registered Node's unhandled-`error`
+behaviour took the whole process down. The protection against denial of service
+*was* a denial of service, reachable by any client in one message.
+
+Both halves are fixed: sockets and the server carry error handlers that log and
+close rather than throw, and the cap is sized against the largest message the
+game legitimately sends. The real guard against an absurd chart remains the
+arrow-count check, which bounds what a message may *contain* rather than only
+how large it is.
+
+Verified by attacking a running server with a 2 MB frame: the server stayed up,
+a bystander's connection was unaffected, and a realistic chart was still
+accepted.
+
+The lesson generalises. **A limit set without measuring the traffic it must
+allow is a guess**, and a guess that rejects normal use is worse than no limit
+at all — it fails closed, loudly, on the happy path.
 
 **Duplicate joins.** One room per socket. Rejoining without leaving left a
 ghost player behind and let one connection hold several seats.
