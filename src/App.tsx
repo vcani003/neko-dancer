@@ -182,6 +182,10 @@ export default function App() {
       onPress: ({ lane, atMs }) => {
         const engine = engineRef.current;
         if (!engine || phaseRef.current !== 'playing') return;
+        // Move the cat on the key, not on the verdict. A dancer that waits to
+        // find out whether it was a good hit is a dancer that lags behind the
+        // player's own hands.
+        rendererRef.current?.reactToPress(lane, performance.now());
         const event = engine.pressLane(lane, atMs);
         if (event) present([event]);
       },
@@ -220,6 +224,7 @@ export default function App() {
           heldLanes: inputRef.current?.heldLanes() ?? new Set<Lane>(),
           leadMs: DEFAULT_LEAD_MS,
           nowMs: now,
+          bpm: phaseRef.current === 'playing' ? chart.analysis.bpm : 0,
         });
       }
 
@@ -230,7 +235,7 @@ export default function App() {
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, [present, room]);
+  }, [present, room, chart]);
 
   // ---- the cold path: HUD and the room's scoreboard ----
   useEffect(() => {

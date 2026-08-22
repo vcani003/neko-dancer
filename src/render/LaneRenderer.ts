@@ -12,6 +12,7 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import type { ActiveArrow, Judgment } from '../engine/LaneJudge.ts';
 import { LANES, LANE_INDEX, type Lane } from '../charts/schema.ts';
+import { CatDancer } from './CatDancer.ts';
 
 const LANE_COLOUR: Record<Lane, number> = {
   left: 0xf472b6,
@@ -61,6 +62,8 @@ export interface LaneRenderState {
   heldLanes: ReadonlySet<Lane>;
   leadMs: number;
   nowMs: number;
+  /** Tempo for the cat's idle bob. Zero means stand still. */
+  bpm?: number;
 }
 
 const POPUP_MS = 520;
@@ -69,8 +72,15 @@ const FLASH_MS = 260;
 export class LaneRenderer {
   private app: Application | null = null;
   private fieldLayer = new Container();
+  private catLayer = new Container();
   private arrowLayer = new Container();
   private effectLayer = new Container();
+  private cat = new CatDancer();
+
+  /** What the cat is reacting to. */
+  private lastLane: Lane | null = null;
+  private lastHitAtMs = 0;
+  private lastMissAtMs = 0;
   private fieldGraphics = new Graphics();
   private arrowGraphics = new Graphics();
 
@@ -100,7 +110,10 @@ export class LaneRenderer {
 
     app.canvas.className = 'field__canvas';
     container.appendChild(app.canvas);
-    app.stage.addChild(this.fieldLayer, this.arrowLayer, this.effectLayer);
+    // The cat sits behind the arrows: she is the reason to look at the screen,
+    // but never the thing in the way of reading one.
+    app.stage.addChild(this.fieldLayer, this.catLayer, this.arrowLayer, this.effectLayer);
+    this.catLayer.addChild(this.cat.view);
     this.fieldLayer.addChild(this.fieldGraphics);
     this.arrowLayer.addChild(this.arrowGraphics);
 
@@ -135,6 +148,7 @@ export class LaneRenderer {
     if (!this.app) return;
     this.resize();
     this.drawField(state);
+    this.drawCat(state);
     this.drawArrows(state);
     this.updateEffects(state.nowMs);
   }
@@ -222,9 +236,50 @@ export class LaneRenderer {
     g.poly(mapped.flat());
   }
 
+  /**
+   * The cat, on the stage between the receptors and the bottom edge.
+   *
+   * Below the receptor line on purpose: that strip is otherwise dead space, and
+   * putting her there means she is visible without ever sitting under a falling
+   * arrow the player is trying to read.
+   */
+  private drawCat(state: LaneRenderState): void {
+    const stageTop = this.receptorY();
+    const available = this.height - stageTop;
+    if (available < 40) {
+      this.cat.view.visible = false;
+      return;
+    }
+
+    this.cat.view.visible = true;
+    const size = Math.min(available * 0.78, this.width * 0.18);
+    this.cat.draw(
+      {
+        lane: this.lastLane,
+        hitAtMs: this.lastHitAtMs,
+        missAtMs: this.lastMissAtMs,
+        bpm: state.bpm ?? 0,
+        playbackMs: state.playbackTimeMs,
+        nowMs: state.nowMs,
+      },
+      this.width / 2,
+      this.height - available * 0.08,
+      size,
+    );
+  }
+
   /** Feedback for one judgment, fired straight from the engine's output. */
   showJudgment(judgment: Judgment, lane: Lane, nowMs: number): void {
     if (!this.app) return;
+
+    // The cat reacts to what the player did, so the movement is a consequence
+    // of playing rather than an animation running alongside it.
+    if (judgment === 'MISS') {
+      this.lastMissAtMs = nowMs;
+    } else {
+      this.lastLane = lane;
+      this.lastHitAtMs = nowMs;
+    }
 
     const colour = JUDGMENT_COLOUR[judgment];
     const cx = this.laneCentreX(lane);
@@ -286,11 +341,20 @@ export class LaneRenderer {
     for (const p of this.popups) p.text.destroy();
     this.flashes = [];
     this.popups = [];
+    this.lastLane = null;
+    this.lastHitAtMs = 0;
+    this.lastMissAtMs = 0;
   }
 
   destroy(): void {
     this.clearEffects();
     this.app?.destroy(true, { children: true });
     this.app = null;
+  }
+
+  /** Pose the cat from a key press, before any judgment is known. */
+  reactToPress(lane: Lane, nowMs: number): void {
+    this.lastLane = lane;
+    this.lastHitAtMs = nowMs;
   }
 }
