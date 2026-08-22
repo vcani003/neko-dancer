@@ -39,6 +39,23 @@ export interface KeyboardInputOptions {
 }
 
 /**
+ * Is the player typing rather than playing?
+ *
+ * Lane keys are WASD and the arrows, which are also most of what a person uses
+ * inside a text field — the letters themselves, and the arrows for moving the
+ * cursor. Swallowing them globally made the name and chat boxes unusable, and
+ * worse, typing "d" in chat fired a right-lane hit mid-song.
+ *
+ * Editable targets therefore get their keystrokes untouched: no preventDefault,
+ * no lane press, no held-lane bookkeeping.
+ */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
+}
+
+/**
  * Listens for lane keys and reports presses.
  *
  * Auto-repeat is suppressed: holding a key down must not machine-gun a lane.
@@ -50,8 +67,14 @@ export class KeyboardInput {
   private attached = false;
 
   private onKeyDown = (event: KeyboardEvent) => {
+    // Checked before the lane lookup, so a typed key is never even considered
+    // gameplay input.
+    if (isTypingTarget(event.target)) return;
+
     const lane = laneForKey(event.key);
     if (lane === null) return;
+    // Only now is it safe to swallow: arrows scroll the page and space would
+    // activate a focused button, neither of which should happen mid-song.
     event.preventDefault();
     if (event.repeat || this.held.has(lane)) return;
 
@@ -67,6 +90,9 @@ export class KeyboardInput {
   private onKeyUp = (event: KeyboardEvent) => {
     const lane = laneForKey(event.key);
     if (lane === null) return;
+    // Released unconditionally, even from a text field. Focus can move between
+    // keydown and keyup — click into chat mid-press and the keyup lands there
+    // — and a lane left stuck "held" would light its receptor forever.
     this.held.delete(lane);
     this.options.onRelease?.(lane);
   };

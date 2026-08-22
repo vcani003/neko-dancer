@@ -59,7 +59,8 @@ src/
 server/         static files, rooms, chat — no networking in the rules
 tests/          pure logic; no browser, no audio, no hardware
 docs/
-  SECURITY.md   what is fixed, what is known, what accounts will need
+  SECURITY.md            what is fixed, what is known, what accounts will need
+  PLAYTEST-FINDINGS.md   bugs found by playing, and why tests missed them
 ```
 
 ## Status
