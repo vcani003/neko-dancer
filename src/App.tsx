@@ -25,12 +25,15 @@ import {
 import { chartDurationMs, LANES, type Lane } from './charts/schema.ts';
 import { TUTORIAL_CHART } from './charts/library.ts';
 import { ClickTrackAdapter } from './playback/ClickTrackAdapter.ts';
+import { YouTubeAdapter } from './playback/YouTubeAdapter.ts';
 import type { PlaybackAdapter } from './playback/PlaybackAdapter.ts';
+import { LocalChartStore, chartKey, type StoredChart } from './charts/ChartStore.ts';
+import AddSong from './ui/AddSong.tsx';
 import { KeyboardInput } from './input/KeyboardInput.ts';
 import { DEFAULT_LEAD_MS, LaneRenderer } from './render/LaneRenderer.ts';
 import { C2S, useRoom } from './net/useRoom.ts';
 
-type Phase = 'menu' | 'playing' | 'results';
+type Phase = 'menu' | 'adding' | 'playing' | 'results';
 
 const HUD_INTERVAL_MS = 100;
 
@@ -77,12 +80,42 @@ export default function App() {
   );
   const [draft, setDraft] = useState('');
 
-  const chart = TUTORIAL_CHART;
+  /**
+   * Charts this browser knows about: the one that ships, plus every song
+   * anyone has charted here. Charted once, replayable forever — which is the
+   * whole point of caching them.
+   */
+  const store = useMemo(() => new LocalChartStore(), []);
+  const [saved, setSaved] = useState<StoredChart[]>([]);
+  const [selectedKey, setSelectedKey] = useState<string>(chartKey(TUTORIAL_CHART));
+
+  const refreshCharts = useCallback(() => {
+    void store.list().then(setSaved);
+  }, [store]);
+  useEffect(refreshCharts, [refreshCharts]);
+
+  const allCharts = useMemo(
+    () => [TUTORIAL_CHART, ...saved.map((s) => s.chart)],
+    [saved],
+  );
+  const chart = useMemo(
+    () => allCharts.find((c) => chartKey(c) === selectedKey) ?? TUTORIAL_CHART,
+    [allCharts, selectedKey],
+  );
   const durationMs = useMemo(() => chartDurationMs(chart), [chart]);
 
   const stageRef = useRef<HTMLDivElement>(null);
+  /**
+   * Where the YouTube player lives during play.
+   *
+   * Mounted permanently and merely hidden when unused. YouTube requires the
+   * player visible and functional while it is driving playback — that is their
+   * policy and it is also just correct, since it is someone's work and the
+   * player is how they get credited and controlled.
+   */
+  const youtubeRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<LaneRenderer | null>(null);
-  const adapterRef = useRef<ClickTrackAdapter | null>(null);
+  const adapterRef = useRef<PlaybackAdapter | null>(null);
   const clockRef = useRef<GameClock | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const inputRef = useRef<KeyboardInput | null>(null);
@@ -219,15 +252,31 @@ export default function App() {
     rendererRef.current?.clearEffects();
 
     const playback = chart.song.playback;
-    const adapter = new ClickTrackAdapter({
-      bpm: playback.provider === 'clickTrack' ? playback.bpm : chart.analysis.bpm,
-      beatsPerBar: playback.provider === 'clickTrack' ? (playback.beatsPerBar ?? 4) : 4,
-      bars: playback.provider === 'clickTrack' ? (playback.bars ?? 20) : 20,
-      leadInBars: 1,
-    });
-    adapterRef.current = adapter;
+    let adapter: PlaybackAdapter;
 
-    const clock = new GameClock(adapter as PlaybackAdapter, { offsetMs });
+    try {
+      if (playback.provider === 'youtube') {
+        youtubeRef.current!.replaceChildren();
+        adapter = await YouTubeAdapter.create({
+          videoId: playback.videoId,
+          container: youtubeRef.current!,
+        });
+      } else {
+        adapter = new ClickTrackAdapter({
+          bpm: playback.provider === 'clickTrack' ? playback.bpm : chart.analysis.bpm,
+          beatsPerBar: playback.provider === 'clickTrack' ? (playback.beatsPerBar ?? 4) : 4,
+          bars: playback.provider === 'clickTrack' ? (playback.bars ?? 20) : 20,
+          leadInBars: 1,
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That song could not be loaded.');
+      setPhase('menu');
+      return;
+    }
+
+    adapterRef.current = adapter;
+    const clock = new GameClock(adapter, { offsetMs });
     clockRef.current = clock;
     engineRef.current = new GameEngine(clock, chart, { windows: DEFAULT_WINDOWS });
 
@@ -292,6 +341,30 @@ export default function App() {
               <h1>neko <span>dancer</span></h1>
               <p className="hint">{chart.song.title} · {chart.arrows.length} arrows</p>
 
+              <div className="songlist">
+                {allCharts.map((c) => {
+                  const key = chartKey(c);
+                  return (
+                    <button
+                      key={key}
+                      className={`songrow ${key === selectedKey ? 'is-active' : ''}`}
+                      onClick={() => setSelectedKey(key)}
+                    >
+                      <span>
+                        <span className="songrow__title">{c.song.title}</span>
+                        <br />
+                        <span className="songrow__meta">
+                          {c.arrows.length} arrows · {c.analysis.bpm.toFixed(0)} BPM ·{' '}
+                          {c.source === 'generated' ? 'tapped' : 'hand-written'}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button onClick={() => setPhase('adding')}>Add a song from YouTube</button>
+
               <div className="keycaps">
                 {LANES.map((lane) => (
                   <span key={lane} className="keycap">{ARROW_GLYPH[lane]}</span>
@@ -305,6 +378,21 @@ export default function App() {
               {error && <p className="hint" style={{ color: 'var(--bad)' }}>{error}</p>}
               <button className="button--primary" onClick={start}>Play</button>
             </div>
+          </div>
+        )}
+
+        {phase === 'adding' && (
+          <div className="overlay">
+            <AddSong
+              onCancel={() => setPhase('menu')}
+              onCharted={(newChart) => {
+                void store.put(newChart, name || undefined).then(() => {
+                  refreshCharts();
+                  setSelectedKey(chartKey(newChart));
+                  setPhase('menu');
+                });
+              }}
+            />
           </div>
         )}
 
@@ -376,6 +464,17 @@ export default function App() {
       </div>
 
       <aside className="side">
+        <div
+          className="card"
+          style={{ display: chart.song.playback.provider === 'youtube' ? 'block' : 'none' }}
+        >
+          <h2 className="side__heading">Now playing</h2>
+          <div className="ytplayer" ref={youtubeRef} />
+          <p className="hint" style={{ marginTop: 6 }}>
+            The video plays here and stays yours to control.
+          </p>
+        </div>
+
         <div className="card">
           <h2 className="side__heading">You</h2>
           <input

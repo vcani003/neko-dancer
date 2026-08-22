@@ -132,3 +132,35 @@ describe('generating a chart from taps alone', () => {
     expect(new Set(chart.arrows.map((a) => a.lane)).size).toBe(4);
   });
 });
+
+describe('readability of a generated chart', () => {
+  const grid = analysisFromTempo({ bpm: 128, firstBeatMs: 250, durationMs: 180_000 });
+
+  /**
+   * A run of the same arrow reads as a stutter rather than a phrase, and it
+   * stops the player using both hands — which is most of what makes a chart
+   * feel like dancing rather than typing.
+   */
+  it('avoids playing the same lane twice in a row', () => {
+    const chart = generateChart(grid, { song, difficulty: 'normal' });
+    let repeats = 0;
+    for (let i = 1; i < chart.arrows.length; i++) {
+      if (chart.arrows[i].lane === chart.arrows[i - 1].lane) repeats += 1;
+    }
+    expect(repeats).toBe(0);
+  });
+
+  it('spreads arrows reasonably evenly across the lanes', () => {
+    const chart = generateChart(grid, { song, difficulty: 'normal' });
+    const counts = new Map<string, number>();
+    for (const arrow of chart.arrows) {
+      counts.set(arrow.lane, (counts.get(arrow.lane) ?? 0) + 1);
+    }
+    const share = [...counts.values()].map((n) => n / chart.arrows.length);
+    // No lane should dominate or be forgotten: a quarter each, give or take.
+    for (const value of share) {
+      expect(value).toBeGreaterThan(0.15);
+      expect(value).toBeLessThan(0.4);
+    }
+  });
+});

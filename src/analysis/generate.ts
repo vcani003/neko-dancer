@@ -154,7 +154,7 @@ export function generateChart(
 
     if (previous && timeMs - previous.timeMs < rules.minGapMs) continue;
 
-    const options_ = LANES.filter((lane) => {
+    const options_: Lane[] = LANES.filter((lane) => {
       if (timeMs - lastUsedAt[lane] < rules.minSameLaneGapMs) return false;
       if (
         previous &&
@@ -169,7 +169,18 @@ export function generateChart(
 
     if (options_.length === 0) continue;
 
-    const lane = options_[Math.floor(random() * options_.length) % options_.length];
+    // Prefer not to reuse the lane just played, even when the timing allows
+    // it. Spec §9 asks for readable patterns, and a run of the same arrow
+    // reads as a stutter rather than as a phrase — it also stops the player
+    // using both hands, which is most of what makes a chart feel like dancing.
+    // Only a preference: if it is the sole legal option, it is still played.
+    const justPlayed = previous?.lane;
+    const notJustPlayed: Lane[] = justPlayed
+      ? options_.filter((candidate) => candidate !== justPlayed)
+      : options_;
+    const pool: Lane[] = notJustPlayed.length > 0 ? notJustPlayed : options_;
+
+    const lane: Lane = pool[Math.floor(random() * pool.length) % pool.length];
     arrows.push({
       id: `a${(arrows.length + 1).toString().padStart(4, '0')}`,
       timeMs: Math.round(timeMs),
