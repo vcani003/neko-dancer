@@ -20,6 +20,7 @@
  */
 import type { AudioAnalysis } from './analyze.ts';
 import { LANES, type Arrow, type Chart, type Lane } from '../charts/schema.ts';
+import { intensityAt, playsAt, type SongPlan } from '../charts/SongPlan.ts';
 
 /**
  * Which hand plays which lane.
@@ -105,6 +106,14 @@ export interface GenerateOptions {
   seed?: number;
   /** Leave the opening alone so the player can settle. */
   leadInMs?: number;
+  /**
+   * The song's shape: where it is empty and where it is busy.
+   *
+   * Without one, a chart treats every part of a song the same — which is how
+   * an intro of atmosphere ends up with arrows on it and a final chorus gets
+   * no more than the first verse.
+   */
+  plan?: SongPlan;
 }
 
 /**
@@ -139,7 +148,13 @@ export function generateChart(
   const leadInMs = options.leadInMs ?? 2000;
   const random = makeRandom(options.seed ?? seedFromString(options.song.id));
 
-  const candidates = candidateTimes(analysis).filter((t) => t >= leadInMs);
+  const plan = options.plan;
+
+  const candidates = candidateTimes(analysis)
+    .filter((t) => t >= leadInMs)
+    // A skipped section produces nothing at all. This is the intro problem:
+    // arrows do not belong over silence, and the plan is what knows that.
+    .filter((t) => (plan ? playsAt(plan, t) : true));
 
   const arrows: Arrow[] = [];
   const lastUsedAt: Record<Lane, number> = { left: -Infinity, down: -Infinity, up: -Infinity, right: -Infinity };
@@ -149,8 +164,11 @@ export function generateChart(
     // Thin the chart by difficulty, but keep it musical rather than random:
     // every fourth beat always survives, so the pattern stays anchored to the
     // bar instead of dissolving into scattered notes.
+    // Intensity scales the section's density around the difficulty's baseline,
+    // so a chorus can be busier than a verse within one chart.
+    const density = Math.min(1, rules.density * (plan ? intensityAt(plan, timeMs) : 1));
     const onDownbeat = arrows.length % 4 === 0;
-    if (!onDownbeat && random() > rules.density) continue;
+    if (!onDownbeat && random() > density) continue;
 
     if (previous && timeMs - previous.timeMs < rules.minGapMs) continue;
 
@@ -193,6 +211,9 @@ export function generateChart(
 
   return {
     schemaVersion: 1,
+    // Kept with the chart so it can be edited and regenerated rather than
+    // re-tapped from nothing.
+    ...(plan ? { plan } : {}),
     song: options.song,
     analysis: {
       bpm: analysis.bpm,

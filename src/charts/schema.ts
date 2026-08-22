@@ -36,6 +36,13 @@ export type ChartSource = 'handmade' | 'generated' | 'curated';
 
 export interface Chart {
   schemaVersion: number;
+  /**
+   * The song's shape, kept so a chart can be regenerated or edited later.
+   *
+   * Without it, an edit means charting the whole song again from scratch —
+   * the arrows are the output, and the plan is the thing worth keeping.
+   */
+  plan?: import('./SongPlan.ts').SongPlan;
   song: {
     id: string;
     title: string;

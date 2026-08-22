@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fitTempo, normaliseBpm, MIN_TAPS, type TempoFit } from '../charts/ChartRecorder.ts';
 import { analysisFromTempo, youTubeVideoId } from '../analysis/fromTempo.ts';
+import { inferPlanFromTaps } from '../charts/SongPlan.ts';
 import { generateChart, type GeneratedDifficulty } from '../analysis/generate.ts';
 import { YouTubeAdapter } from '../playback/YouTubeAdapter.ts';
 import type { Chart } from '../charts/schema.ts';
@@ -33,6 +34,15 @@ export default function AddSong({ onCharted, onCancel }: Props) {
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [taps, setTaps] = useState<number[]>([]);
+  /**
+   * Every tap, kept separately from the tempo taps.
+   *
+   * The first handful establish the grid; the rest describe the song — where
+   * the player stopped tapping is a passage with nothing worth hitting, and
+   * how fast they tapped is how busy it felt. Discarding them to keep only an
+   * average tempo throws away most of what was expressed.
+   */
+  const [shapeTaps, setShapeTaps] = useState<number[]>([]);
   const [fit, setFit] = useState<TempoFit | null>(null);
   const [difficulty, setDifficulty] = useState<GeneratedDifficulty>('normal');
 
@@ -78,8 +88,10 @@ export default function AddSong({ onCharted, onCancel }: Props) {
     const adapter = adapterRef.current;
     if (!adapter || adapter.getState() !== 'playing') return;
 
+    const at = adapter.getCurrentTimeMs();
+    setShapeTaps((previous) => [...previous, at]);
     setTaps((previous) => {
-      const next = [...previous, adapter.getCurrentTimeMs()];
+      const next = [...previous, at];
       setFit(fitTempo(next));
       return next;
     });
@@ -105,15 +117,17 @@ export default function AddSong({ onCharted, onCancel }: Props) {
     const bpm = normaliseBpm(fit.bpm);
     // The grid was fitted at whatever tempo was tapped; if that was halved or
     // doubled, the phase still holds — only the spacing changes.
-    const analysis = analysisFromTempo({
-      bpm,
-      firstBeatMs: fit.firstBeatMs,
-      durationMs: adapter.getDurationMs() ?? 180_000,
-    });
+    const durationMs = adapter.getDurationMs() ?? 180_000;
+    const analysis = analysisFromTempo({ bpm, firstBeatMs: fit.firstBeatMs, durationMs });
+
+    // Everything tapped, not just the tempo: gaps become skipped passages and
+    // faster stretches become busier ones.
+    const plan = inferPlanFromTaps(shapeTaps, bpm, fit.firstBeatMs, durationMs);
 
     onCharted(
       generateChart(analysis, {
         difficulty,
+        plan,
         song: {
           id: `youtube:${videoId}`,
           title: title.trim() || 'Untitled',
@@ -123,7 +137,11 @@ export default function AddSong({ onCharted, onCancel }: Props) {
       }),
     );
     setStep('done');
-  }, [fit, difficulty, title, onCharted]);
+    // shapeTaps must be a dependency: without it the plan would be inferred
+    // from whatever the tap list was when this callback was last built, which
+    // is every tap except the recent ones — exactly the ones describing the
+    // end of the song.
+  }, [fit, difficulty, title, onCharted, shapeTaps]);
 
   const enough = taps.length >= MIN_TAPS;
   const shownBpm = fit ? normaliseBpm(fit.bpm) : null;
@@ -224,9 +242,16 @@ export default function AddSong({ onCharted, onCancel }: Props) {
           <button className="button--primary" onClick={makeChart} disabled={!enough}>
             {enough ? 'Build the chart from my taps' : `${MIN_TAPS - taps.length} more taps`}
           </button>
-          <button onClick={() => setTaps([])} disabled={taps.length === 0}>
+          <button
+            onClick={() => { setTaps([]); setShapeTaps([]); setFit(null); }}
+            disabled={taps.length === 0}
+          >
             Clear taps and start over
           </button>
+          <p className="hint" style={{ fontSize: '0.7rem' }}>
+            Keep tapping through the whole song if you like. Where you stop becomes a
+            passage with no arrows, and where you tap faster becomes a busier one.
+          </p>
           <button onClick={onCancel}>Cancel</button>
         </>
       )}

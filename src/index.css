@@ -207,3 +207,43 @@ kbd {
 /* The HUD moves out from under the screen. */
 .hud { top: 14px; left: 14px; right: auto; flex-direction: column; align-items: flex-start; gap: 4px; }
 .hud__right { text-align: left; }
+
+/* ---- section editor ---- */
+
+.editor { width: min(34rem, 100%); }
+
+.timeline {
+  position: relative;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  margin: 0.4rem 0;
+}
+.timeline__block { position: absolute; top: 0; bottom: 0; }
+.timeline__block--play { background: var(--pink); }
+.timeline__block--skip {
+  background: repeating-linear-gradient(
+    45deg, var(--line), var(--line) 4px, transparent 4px, transparent 8px
+  );
+}
+
+.sections { display: flex; flex-direction: column; gap: 5px; max-height: 15rem; overflow-y: auto; }
+
+.section {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 9px;
+  text-align: left;
+}
+.section__head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 5px; }
+.section__time { font-size: 0.72rem; color: var(--muted); }
+.section__label { font-size: 0.66rem; color: var(--pink); text-transform: uppercase; letter-spacing: 0.08em; }
+
+.section__controls { display: grid; grid-template-columns: auto 1fr auto; gap: 7px; align-items: center; }
+.section__controls button { width: auto; padding: 5px 9px; font-size: 11px; }
+.section__controls button.is-active { border-color: var(--line); color: var(--muted); }
+.section__intensity { display: grid; grid-template-columns: 3rem 1fr; gap: 6px; align-items: center; }
+.section__intensity span { font-size: 0.68rem; color: var(--muted); }

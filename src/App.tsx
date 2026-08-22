@@ -29,11 +29,15 @@ import { YouTubeAdapter } from './playback/YouTubeAdapter.ts';
 import type { PlaybackAdapter } from './playback/PlaybackAdapter.ts';
 import { LocalChartStore, chartKey, type StoredChart } from './charts/ChartStore.ts';
 import AddSong from './ui/AddSong.tsx';
+import SectionEditor from './ui/SectionEditor.tsx';
+import { flatPlan, type SongPlan } from './charts/SongPlan.ts';
+import { analysisFromTempo } from './analysis/fromTempo.ts';
+import { generateChart } from './analysis/generate.ts';
 import { KeyboardInput } from './input/KeyboardInput.ts';
 import { DEFAULT_LEAD_MS, LaneRenderer, type RoomPlayerView } from './render/LaneRenderer.ts';
 import { C2S, useRoom } from './net/useRoom.ts';
 
-type Phase = 'menu' | 'adding' | 'playing' | 'results';
+type Phase = 'menu' | 'adding' | 'editing' | 'playing' | 'results';
 
 const HUD_INTERVAL_MS = 100;
 
@@ -123,6 +127,19 @@ export default function App() {
   const chart = useMemo(
     () => roomChart ?? allCharts.find((c) => chartKey(c) === selectedKey) ?? TUTORIAL_CHART,
     [roomChart, allCharts, selectedKey],
+  );
+
+  /**
+   * Admin unlocks editing a song's shape.
+   *
+   * Gated because a plan belongs to the SONG rather than to a player: everyone
+   * in a room plays the same chart, so editing one edits it for everybody.
+   */
+  const isAdmin = useMemo(
+    () =>
+      new URLSearchParams(window.location.search).get('admin') === '1' ||
+      localStorage.getItem('neko.admin') === '1',
+    [],
   );
   const durationMs = useMemo(() => chartDurationMs(chart), [chart]);
 
@@ -459,6 +476,12 @@ export default function App() {
 
               <button onClick={() => setPhase('adding')}>Add a song from YouTube</button>
 
+              {isAdmin && (
+                <button onClick={() => setPhase('editing')}>
+                  Edit this song's shape
+                </button>
+              )}
+
               {room.connection === 'open' && room.room && (
                 <div className="readybar">
                   <span className="readybar__count mono">
@@ -524,6 +547,33 @@ export default function App() {
                 void store.put(newChart, name || undefined).then(() => {
                   refreshCharts();
                   setSelectedKey(chartKey(newChart));
+                  setPhase('menu');
+                });
+              }}
+            />
+          </div>
+        )}
+
+        {phase === 'editing' && (
+          <div className="overlay">
+            <SectionEditor
+              plan={chart.plan ?? flatPlan(chart.analysis.bpm, 0, chartDurationMs(chart) + 15_000)}
+              onChange={() => {}}
+              onClose={() => setPhase('menu')}
+              onRegenerate={(plan: SongPlan) => {
+                // Arrows are output; the plan is the thing worth keeping, so a
+                // rebuild is cheap and repeatable rather than a re-tap.
+                const rebuilt = generateChart(
+                  analysisFromTempo({
+                    bpm: plan.bpm,
+                    firstBeatMs: plan.firstBeatMs,
+                    durationMs: plan.durationMs,
+                  }),
+                  { song: chart.song, plan, difficulty: 'normal' },
+                );
+                void store.put(rebuilt, name || undefined).then(() => {
+                  refreshCharts();
+                  setSelectedKey(chartKey(rebuilt));
                   setPhase('menu');
                 });
               }}
