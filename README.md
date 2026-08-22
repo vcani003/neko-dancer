@@ -63,9 +63,25 @@ docs/
   PLAYTEST-FINDINGS.md   bugs found by playing, and why tests missed them
 ```
 
+## Charts
+
+A song needs a chart. There are two ways to get one, and which applies depends
+on whether the audio can be read at all.
+
+**YouTube: it cannot.** The developer policies forbid extracting or isolating
+audio, and the embed offers no samples regardless. So a chart for a YouTube
+song is **tapped in** while it plays — `ChartRecorder` fits a tempo grid to the
+taps by least squares and snaps the notes onto it.
+
+**Local audio: it can**, and analysis is worth building for files we hold.
+
+Either way the chart is **cached** (`ChartStore`, keyed by playback source), so
+a song is charted once and every play after reuses it — the original calls this
+"Processing". What is cached is note times, lanes and tempo. Never audio.
+
 ## Status
 
-Stage 0. Playable solo against a click track; rooms, chat and a live scoreboard
-work on a local network. Not yet built: the cat, YouTube playback, automatic
-chart generation, accounts, progression. See
+Stage 0, plus YouTube playback and tap-authoring. Playable solo against a click
+track; rooms, chat and a live scoreboard work on a local network. Not yet
+built: the cat, the tap-authoring UI, accounts, progression. See
 [`../hop-beat/docs/NEKODANCER-PLAN.md`](../hop-beat/docs/NEKODANCER-PLAN.md).
