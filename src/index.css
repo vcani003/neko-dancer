@@ -255,3 +255,4 @@ kbd {
 .panel--error { border-color: var(--bad); max-width: 32rem; }
 .panel--error h2 { font-size: 1rem; margin: 0 0 0.5rem; color: var(--bad); }
 .board__blocked { color: var(--bad); font-size: 0.62rem; letter-spacing: 0.06em; }
+.board--results { margin: 12px 0 4px; width: 100%; }

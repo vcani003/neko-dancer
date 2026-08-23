@@ -584,3 +584,85 @@ describe('renaming', () => {
     attacker.close();
   });
 });
+
+/**
+ * A room that outlives one song.
+ *
+ * Until P0 there was no way back: the round reached `results` and each player
+ * saw a private card with a "Play again" button that started a SOLO run. So a
+ * session was pick, ready, play once, and then everybody sat there. This is the
+ * cycle the "Back to the room" button makes reachable, and it is worth pinning
+ * because a second round exercises reset paths the first one never touches.
+ */
+describe('a second round', () => {
+  it('can be played without anyone rejoining', async () => {
+    const vero = await connect('Vero', 'tworounds');
+    const friend = await connect('Friend', 'tworounds');
+
+    vero.send('pickSong', { chart: CHART });
+    await friend.waitFor('song');
+
+    // --- round one ---
+    vero.send('ready', { ready: true });
+    friend.send('ready', { ready: true });
+    await vero.waitFor('round', (m) => m.round.state === 'countdown');
+    await vero.waitFor('round', (m) => m.round.state === 'playing');
+
+    vero.send('score', { score: 5000, combo: 20, health: 90 });
+    vero.send('finish', {});
+    friend.send('finish', {});
+    await vero.waitFor('round', (m) => m.round.state === 'results');
+
+    // Everyone is un-readied by the end of a round, so the next one starts the
+    // same way the last one did rather than beginning instantly.
+    //
+    // Waiting on `finished`, not on `!ready`. `waitFor` scans the whole history
+    // for the first match, and nobody was ready at the START of the session
+    // either — so a `!ready` predicate matches a broadcast from before the
+    // round even began, and asserts nothing about the end of it.
+    const afterRound = await vero.waitFor('room', (m) =>
+      m.room.players.every((p: any) => p.finished),
+    );
+    expect(afterRound.room.players.every((p: any) => !p.ready)).toBe(true);
+
+    // --- round two, same players, same socket ---
+    vero.send('ready', { ready: true });
+    friend.send('ready', { ready: true });
+    const second = await vero.waitFor(
+      'round',
+      (m) => m.round.state === 'countdown' && m.round.startedAt === null,
+    );
+    expect(second.round.state).toBe('countdown');
+
+    // Last round's numbers must not be sitting on the board.
+    const fresh = await vero.waitFor('room', (m) =>
+      m.room.players.every((p: any) => p.score === 0 && !p.finished),
+    );
+    expect(fresh.room.players.every((p: any) => p.health === 100)).toBe(true);
+
+    vero.close();
+    friend.close();
+  });
+
+  /** A player who sits out one round must be able to play the next one. */
+  it('lets someone who could not play the last song play the next', async () => {
+    const vero = await connect('Vero', 'sitout');
+    const friend = await connect('Friend', 'sitout');
+
+    vero.send('pickSong', { chart: CHART });
+    await friend.waitFor('song');
+    friend.send('canPlay', { songId: CHART.song.id, ok: false, reason: 'embedBlocked' });
+    await vero.waitFor('room', (m) => m.room.players.some((p: any) => p.canPlay === 'no'));
+
+    // A different song: picking must clear everyone's verdict about the old one.
+    vero.send('pickSong', {
+      chart: { ...CHART, song: { ...CHART.song, id: 'youtube:second', title: 'Another' } },
+    });
+
+    const cleared = await vero.waitFor('room', (m) => m.room.song?.title === 'Another');
+    expect(cleared.room.players.every((p: any) => p.canPlay !== 'no')).toBe(true);
+
+    vero.close();
+    friend.close();
+  });
+});

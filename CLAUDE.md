@@ -6,6 +6,8 @@ A recreation of **Nekodancer** (Atelier 801), which is deprecated. Faithful to
 the original's design; the code and the cat art are original. Browser rhythm
 game, LAN multiplayer, private repository.
 
+- **Start at `docs/STATUS.md`** — current phase, the checklist, every decision
+  and what is still open. It is the board; read it before anything else.
 - **Docs, in reading order**: `docs/SYSTEM-DESIGN.md` is **the contract** —
   the what and why, and the authority. `docs/IMPLEMENTATION-PLAN.md` is the who,
   where and how we prove it. Then `docs/ENGINEERING.md` (house rules, loaded

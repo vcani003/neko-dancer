@@ -599,6 +599,19 @@ export default function App() {
   const sittingOut = room.room?.players.filter((p) => p.canPlay === 'no') ?? [];
   const iCannotPlay = me?.canPlay === 'no';
 
+  /**
+   * Are we playing WITH someone, as opposed to merely connected?
+   *
+   * The distinction decides who is allowed to start a round. Alone in a room is
+   * single player with a socket attached; two people in a room is a thing the
+   * server starts.
+   */
+  const roomPlayers = room.room?.players ?? [];
+  const inMultiplayer = room.connection === 'open' && roomPlayers.length > 1;
+  /** The round's board: everyone, best first. Ranked by the server. */
+  const scoreboard = inMultiplayer ? roomPlayers.filter((p) => p.canPlay !== 'no') : [];
+  const stillPlaying = scoreboard.filter((p) => !p.finished);
+
   useEffect(() => {
     const roster = room.room?.players ?? [];
     playersRef.current =
@@ -762,7 +775,23 @@ export default function App() {
                   {errorHint && <p className="hint">{errorHint}</p>}
                 </>
               )}
-              <button className="button--primary" onClick={start}>Play</button>
+              {/*
+                In a room there is no independent start. Ready is the
+                commitment and the server decides when — an ungated Play button
+                sitting next to a running countdown is simply pressed, and each
+                press begins a private run three seconds out of step with
+                everyone else's. That was the whole of "why aren't we starting
+                together".
+              */}
+              {inMultiplayer ? (
+                <p className="hint" style={{ marginTop: 4 }}>
+                  {iCannotPlay
+                    ? 'This song will not play for you, so the others will start without you.'
+                    : 'The round starts on its own once everyone is ready.'}
+                </p>
+              ) : (
+                <button className="button--primary" onClick={start}>Play</button>
+              )}
             </div>
           </div>
         )}
@@ -886,7 +915,51 @@ export default function App() {
                 );
               })()}
 
-              <button className="button--primary" onClick={start}>Play again</button>
+              {/*
+                A round with no shared scoreboard is two solo runs that happened
+                to start together. The board is the entire payoff of playing
+                with someone, and until now each player saw only their own card.
+              */}
+              {inMultiplayer && (
+                <div className="board board--results">
+                  {scoreboard.map((player) => (
+                    <div
+                      key={player.id}
+                      className={`board__row ${player.id === room.playerId ? 'board__row--me' : ''}`}
+                    >
+                      <span className="board__rank mono">{player.rank}</span>
+                      <span className="board__name">
+                        {player.name}
+                        {player.id === room.playerId && <span className="board__you"> (you)</span>}
+                        {!player.finished && <span className="board__blocked"> playing…</span>}
+                      </span>
+                      <span className="mono">{player.score.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {inMultiplayer && stillPlaying.length > 0 && (
+                <p className="hint" style={{ fontSize: '0.72rem' }}>
+                  Waiting for {stillPlaying.map((p) => p.name).join(', ')} to finish.
+                </p>
+              )}
+
+              {inMultiplayer ? (
+                <button
+                  className="button--primary"
+                  onClick={() => {
+                    // Back to the room, not back into a song. The server has
+                    // already un-readied everyone, so the next round starts the
+                    // same way the last one did.
+                    setPhase('menu');
+                  }}
+                >
+                  Back to the room
+                </button>
+              ) : (
+                <button className="button--primary" onClick={start}>Play again</button>
+              )}
               <button onClick={quit}>Menu</button>
             </div>
           </div>
