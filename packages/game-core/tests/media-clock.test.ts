@@ -141,20 +141,40 @@ describe('a stalled source stops the clock', () => {
    * for its state. Under ADR-007 the clock sees only numbers, so a stall is a
    * media time that stops advancing while wall time keeps going.
    */
-  it('stops advancing once the source stops advancing', () => {
+  /**
+   * The bound is one OKAY window, not a round number.
+   *
+   * These assertions originally read `< 2500`, which mutation testing showed
+   * was useless: a clock with stall detection removed entirely reads 2490 after
+   * a two-second freeze and 2304 after ten, so both passed. The threshold has
+   * to mean something, and what it means is "no note has become unhittable" —
+   * beyond `okayMs` past the frozen position, notes start expiring against a
+   * video the player is staring at, motionless.
+   */
+  const OKAY_WINDOW_MS = 160;
+
+  it('pins to the frozen position rather than running on past it', () => {
     const clock = new MediaClock();
     for (let wall = 0; wall <= 2000; wall += 16) clock.sample(wall, wall);
     // The video freezes at 2000 while the wall clock runs on for two seconds.
     for (let wall = 2016; wall <= 4000; wall += 16) clock.sample(2000, wall);
-    expect(clock.timeMs(4000)).toBeLessThan(2500);
+    expect(clock.timeMs(4000)).toBeLessThan(2000 + OKAY_WINDOW_MS);
   });
 
-  it('does not run a whole judgment window past a frozen source', () => {
+  it('does not expire a single note during an eight-second freeze', () => {
     const clock = new MediaClock();
     for (let wall = 0; wall <= 2000; wall += 16) clock.sample(wall, wall);
     for (let wall = 2016; wall <= 10_000; wall += 16) clock.sample(2000, wall);
-    // Eight seconds of frozen video must not become eight seconds of expired notes.
-    expect(clock.timeMs(10_000)).toBeLessThan(2500);
+    expect(clock.timeMs(10_000)).toBeLessThan(2000 + OKAY_WINDOW_MS);
+  });
+
+  it('stays pinned however long the freeze lasts', () => {
+    // A clock that merely slews back toward the source converges to a wrong
+    // constant; one that recognises the stall sits exactly on it.
+    const clock = new MediaClock();
+    for (let wall = 0; wall <= 2000; wall += 16) clock.sample(wall, wall);
+    for (let wall = 2016; wall <= 30_000; wall += 16) clock.sample(2000, wall);
+    expect(clock.timeMs(30_000)).toBeCloseTo(2000, -2);
   });
 
   it('resumes cleanly when the source starts moving again', () => {

@@ -72,6 +72,15 @@ export class MediaClock {
 }
 ```
 
+**Before the first sample, `timeMs()` returns `0`.** Not the wall time, not the
+argument — a clock that has never been told where the music is does not get to
+guess, and zero is the only answer that cannot be mistaken for a real reading.
+
+```ts
+// (interface continues)
+}
+```
+
 **Behaviour that must be preserved** — it was arrived at by measurement and
 losing it would be a regression:
 
@@ -94,7 +103,13 @@ losing it would be a regression:
 ```ts
 import type { Judgment, JudgmentWindows } from '@neko/protocol';
 
-/** `absDeltaMs` is |press − note|. Returns MISS beyond `okayMs`. */
+/**
+ * `absDeltaMs` is |press − note|. Returns MISS beyond `okayMs`.
+ *
+ * Takes the **magnitude** of its argument, and returns `MISS` for `NaN`. A
+ * negative would otherwise slide past `<= perfectMs` and award `PERFECT` to a
+ * press a second away from the note — a comparison that fails open.
+ */
 export function judge(absDeltaMs: number, windows: JudgmentWindows): Judgment;
 ```
 
@@ -153,8 +168,18 @@ export class GameEngine {
   /** A key came up. Only meaningful for holds; safe to call otherwise. */
   release(lane: Lane, atMediaTimeMs: number): void;
 
-  /** Notes worth drawing right now, nearest first. */
-  visible(mediaTimeMs: number, leadMs: number): readonly ActiveNote[];
+  /**
+   * Notes worth drawing right now, **ordered by ascending `timeMs`** — the
+   * order they will arrive, not by absolute distance from the receptor.
+   *
+   * The two differ for a note just past the line, and "nearest first" did not
+   * say which. A renderer written against one reading flickers under the other.
+   *
+   * Includes a trail: `-trailMs <= note.timeMs - mediaTimeMs <= leadMs`, with
+   * `trailMs` defaulting to 150 — a note has to be visible for a moment after
+   * the line or a late hit looks like it landed on nothing.
+   */
+  visible(mediaTimeMs: number, leadMs: number, trailMs?: number): readonly ActiveNote[];
 
   state(): EngineState;
   /** True once the run is over — completed OR failed. */
@@ -194,8 +219,18 @@ A `HoldNote` is judged twice: its **start**, exactly like a tap, and its
 **sustain**. Keep the first version simple:
 
 - Missing the start misses the whole hold.
-- Releasing early ends it; the hold scores by the fraction held.
+- Releasing early ends it; the hold scores by the fraction held, **linearly** —
+  no curve, and a dropped hold is over (no re-grabbing).
 - Still holding at the end scores it in full.
+
+**A hold contributes exactly one entry to `counts`** — its start judgment — and
+counts once in accuracy's denominator. The sustain moves the *score* and can
+break the combo; it does not move `counts`, `judgedCount` or accuracy.
+
+That is what makes accuracy comparable between a chart with holds and one
+without, and it is the rule the document originally failed to fix: "scores by
+the fraction held" left the scoreboard for one run genuinely ambiguous between
+two reasonable implementations.
 
 Anything cleverer — re-grabbing a dropped hold, partial credit curves — is
 Phase 8. Say so in a comment rather than building it.
@@ -226,7 +261,14 @@ time)`. All five Part 4 fixtures land on 120.000 BPM / 237 ms.
 export interface TempoFit {
   bpm: number;
   firstBeatMs: number;
-  /** Agreement × coverage: how well the used taps fit, scaled by how many were usable. */
+  /**
+   * Agreement × coverage, in `[0, 1]`, higher is better.
+   *
+   * **For ordering, not for display.** It has no calibrated meaning — 0.8 is
+   * not "80% likely to be right" — so a UI must not show it as a percentage
+   * until it has been checked against real taps. `residualMs` is the number to
+   * show a person, because a millisecond figure is something they can act on.
+   */
   confidence: number;
   /** Kept because a measured millisecond figure is actionable in a way a 0–1 score is not. */
   residualMs: number;

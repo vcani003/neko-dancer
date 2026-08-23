@@ -113,6 +113,27 @@ describe('a press with nothing in range costs nothing', () => {
     expect(counts.MISS).toBe(0);
   });
 
+  /**
+   * "Costs nothing" is the whole sentence, and the tally is only half of it.
+   * The engine this replaces docked health for a wrong key, so a player
+   * drumming through a rest could fail a run they were playing perfectly —
+   * which is a rule the chart never told them about.
+   */
+  it('takes no health and no score from a press that claimed nothing', () => {
+    const engine = engineOf();
+    const before = engine.result();
+    for (let i = 0; i < 40; i++) engine.press('down', 5_000 + i);
+    const after = engine.result();
+    expect(after.health).toBe(before.health);
+    expect(after.score).toBe(before.score);
+  });
+
+  it('cannot be failed by mashing an empty lane', () => {
+    const engine = engineOf();
+    for (let i = 0; i < 500; i++) engine.press('left', 5_000 + i);
+    expect(engine.isOver()).toBe(false);
+  });
+
   it('leaves the note claimable after a wasted press nearby', () => {
     const engine = engineOf();
     engine.press('up', 9_000);
@@ -130,6 +151,32 @@ describe('a note is judged once, never re-judged and never un-judged', () => {
     const engine = engineOf();
     expect(engine.press('up', 10_000)).not.toBeNull();
     expect(engine.press('up', 10_010)).toBeNull();
+  });
+
+  /**
+   * Two notes in one lane, and the player hits the LATER one first.
+   *
+   * The single-note version of this test passes even with the "already judged"
+   * check removed, because the engine's forward cursor has already stepped past
+   * the note — so it proves the cursor works, not the rule. Here the cursor
+   * cannot help: the earlier note is still unjudged, so it must stay where it
+   * is, and the note just claimed must not be claimable a second time.
+   */
+  it('does not re-claim a judged note while an earlier one is still open', () => {
+    const engine = engineOf(chartOf([tap('a', 10_000), tap('b', 10_100)]));
+    expect(engine.press('up', 10_100)?.noteId).toBe('b');
+    // Nearest is 'b' again at distance 0, but 'b' is spent — this must fall to 'a'.
+    expect(engine.press('up', 10_100)?.noteId).toBe('a');
+    expect(engine.press('up', 10_100)).toBeNull();
+  });
+
+  it('judges each of two notes exactly once, whichever order they are hit in', () => {
+    const engine = engineOf(chartOf([tap('a', 10_000), tap('b', 10_100)]));
+    engine.press('up', 10_100);
+    engine.press('up', 10_100);
+    engine.update(20_000);
+    const counts = engine.result().counts;
+    expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(2);
   });
 
   it('does not expire a note that was already hit', () => {
@@ -241,6 +288,40 @@ describe('calibration moves the press, never the chart — §13, ADR-003', () =>
     const engine = engineOf(singleTapChart(), 200);
     expect(engine.press('up', 9_820)?.judgment).toBe('PERFECT');
   });
+
+  /**
+   * The claim window and the expiry boundary must agree.
+   *
+   * API.md fixes the claim window (`within okayMs`, after calibration) and says
+   * `update` returns "notes that have just expired unhit" — but never says
+   * whether calibration moves expiry too. It has to, and this is why: if only
+   * the press is shifted, the two boundaries part company by exactly the
+   * calibration. A player on +50 gets a note that has become unclaimable but is
+   * not yet expired — a dead zone where the key does nothing; a player on -50
+   * gets a note marked missed while their press could still legitimately land.
+   *
+   * Neither is visible in a normal run, and neither is anyone's fault at the
+   * moment it happens. Asserted as the derivable consistency property rather
+   * than as a rule about `update`, so it holds however Architecture resolves
+   * the wording.
+   */
+  const OKAY = DEFAULT_WINDOWS.okayMs;
+
+  it.each([0, 50, -50, 120, -120])(
+    'has one boundary, not two, at a calibration of %i ms',
+    (calibrationMs) => {
+      // The last raw media time at which a press can still reach the note.
+      const lastClaimableRawMs = 10_000 + OKAY - calibrationMs;
+
+      const stillOpen = engineOf(singleTapChart(), calibrationMs);
+      expect(stillOpen.update(lastClaimableRawMs)).toHaveLength(0);
+      expect(stillOpen.press('up', lastClaimableRawMs)).not.toBeNull();
+
+      const justClosed = engineOf(singleTapChart(), calibrationMs);
+      expect(justClosed.update(lastClaimableRawMs + 1)).toHaveLength(1);
+      expect(justClosed.press('up', lastClaimableRawMs + 1)).toBeNull();
+    },
+  );
 });
 
 describe('a failed run stops judging and never reports completion', () => {

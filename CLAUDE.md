@@ -10,8 +10,10 @@ game, LAN multiplayer, private repository.
   the what and why, and the authority. `docs/IMPLEMENTATION-PLAN.md` is the who,
   where and how we prove it. Then `docs/ENGINEERING.md` (house rules, loaded
   above), `docs/SECURITY.md` (the hostile case), `docs/PLAYTEST-FINDINGS.md`
-  (what broke and the pattern in it). `docs/ARCHITECTURE.md` describes the
-  CURRENT build and is being superseded by the system design.
+  (what broke and the pattern in it). `docs/FRONTEND-DESIGN.md` covers the
+  design system, state ownership and the Storybook plan.
+  `docs/ARCHITECTURE.md` describes the CURRENT build and is being superseded by
+  the system design.
 - **State**: **architecture-changing feature work is frozen** (system design
   §31.1). The prototype works end to end — engine, scoring, chart authoring,
   PixiJS renderer, LAN multiplayer, lobby video preflight — and is now being

@@ -80,18 +80,24 @@ export interface PressResult {
    * with nothing in range returns `null` for the whole result rather than a
    * result with no note, because it is not a miss and there is nothing to
    * report about it.
+   *
+   * So this is never null — and saying `string | null` made every consumer
+   * handle a case that cannot happen. A type that under-states what the code
+   * guarantees is the same defect as a type that over-states it: both make the
+   * compiler stop being able to help.
    */
-  noteId: string | null;
+  noteId: string;
 }
 
 /** A note that ran out of time. */
 export interface ExpiredNote {
   readonly note: Note;
   /**
-   * Always `MISS`. Named rather than implied so a renderer can feed an expiry
-   * and a judged press through the same code path.
+   * Always `MISS`, and typed as the literal so the comment cannot drift from
+   * the type. Named rather than implied so a renderer can feed an expiry and a
+   * judged press through the same code path.
    */
-  readonly judgment: Judgment;
+  readonly judgment: 'MISS';
   /** The media time it was retired at — `update`'s own argument, calibrated. */
   readonly mediaTimeMs: number;
 }
