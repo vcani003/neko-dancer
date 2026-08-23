@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  absoluteNoteTimes,
   LocalChartStore,
   MemoryChartStore,
   authorSlug,
@@ -244,5 +245,43 @@ describe('charts stored by an older build', () => {
     localStorage.setItem('neko.chart.youtube:broken', JSON.stringify({ chart: { nope: true } }));
     localStorage.setItem('neko.chart.youtube:garbage', 'not json at all');
     expect(await new LocalChartStore().list()).toHaveLength(0);
+  });
+});
+
+/**
+ * Charts written before ADR-003.
+ *
+ * A chart may carry a non-zero `analysis.offsetMs` that used to be added at
+ * playback. Simply ignoring it now would shift that chart by the offset — so it
+ * is folded into the note times once, on read, and the field is zeroed. The
+ * chart plays exactly as it did; only where the number lives has changed.
+ */
+describe('charts carrying a grid offset', () => {
+  const withOffset = (offsetMs: number): Chart => ({
+    ...chartFor({ provider: 'youtube', videoId: 'v' }, 3),
+    analysis: { bpm: 128, offsetMs, generatorVersion: 'tapped-1' },
+  });
+
+  it('folds the offset into the note times and zeroes it', () => {
+    const before = withOffset(250);
+    const after = absoluteNoteTimes(before);
+
+    expect(after.analysis.offsetMs).toBe(0);
+    expect(after.arrows.map((a) => a.timeMs)).toEqual(
+      before.arrows.map((a) => a.timeMs + 250),
+    );
+  });
+
+  it('handles a negative offset without producing a negative time', () => {
+    const after = absoluteNoteTimes({
+      ...withOffset(-5000),
+      arrows: [{ id: 'a0', timeMs: 1000, lane: 'left', type: 'tap' }],
+    });
+    expect(after.arrows[0].timeMs).toBe(0);
+  });
+
+  it('leaves a chart with no offset completely alone', () => {
+    const chart = withOffset(0);
+    expect(absoluteNoteTimes(chart)).toBe(chart);
   });
 });

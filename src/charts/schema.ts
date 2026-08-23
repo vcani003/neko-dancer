@@ -67,6 +67,25 @@ export function chartDurationMs(chart: Chart): number {
   return chart.arrows.length === 0 ? 0 : chart.arrows[chart.arrows.length - 1].timeMs;
 }
 
-export function arrowTimeMs(arrow: Arrow, chart: Chart): number {
-  return arrow.timeMs + chart.analysis.offsetMs;
+/**
+ * When this note is due, in media time. ADR-003.
+ *
+ * **A note time is absolute.** The chart's `analysis.offsetMs` describes the
+ * beat grid the notes were authored against; it is used by the editor and by
+ * analysis, and it is NEVER added to a note time at playback.
+ *
+ * It used to be added here. That was not producing wrong timing — every
+ * generator writes `offsetMs: 0`, and both the judge and the renderer read the
+ * one value this function returns, so they agreed with each other. The problem
+ * was subtler and worse: `Arrow.timeMs` meant "relative to the grid" while
+ * `ActiveArrow.timeMs` meant "absolute", two fields with one name and two
+ * meanings, waiting for someone to use the wrong one. A chart edited by hand or
+ * arriving from another build could set a non-zero offset and shift every note
+ * silently.
+ *
+ * Kept as a function rather than inlined because it is the single place that
+ * answers "when is this note", and that is worth being able to point at.
+ */
+export function arrowTimeMs(arrow: Arrow, _chart: Chart): number {
+  return arrow.timeMs;
 }

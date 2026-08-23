@@ -46,8 +46,13 @@ describe('judgeDelta — five tiers', () => {
 });
 
 describe('toActiveArrows', () => {
-  it('applies the chart offset once, up front', () => {
-    expect(active([arrow('a', 1000)], 250)[0].timeMs).toBe(1250);
+  /**
+   * This asserted the opposite until ADR-003: the chart offset was added to
+   * every note time here. It is kept, inverted, rather than deleted, because
+   * the rule it now encodes is the one that was previously wrong.
+   */
+  it('does not apply the chart offset — note times are absolute', () => {
+    expect(active([arrow('a', 1000)], 250)[0].timeMs).toBe(1000);
   });
 
   it('starts everything unjudged', () => {
@@ -116,5 +121,31 @@ describe('visibleArrows', () => {
     const arrows = active([arrow('a', 1000)]);
     expect(visibleArrows(arrows, 1100, 2000, 150)).toHaveLength(1);
     expect(visibleArrows(arrows, 1300, 2000, 150)).toHaveLength(0);
+  });
+});
+
+/**
+ * ADR-003: a note time is absolute.
+ *
+ * The chart's `analysis.offsetMs` describes the beat grid the notes were
+ * authored against. It is editor and analysis metadata, and it is never added
+ * to a note time at playback — otherwise a chart that stores absolute times AND
+ * an offset has both applied, and every note is wrong by the offset.
+ */
+describe('note times are absolute (ADR-003)', () => {
+  it('ignores the chart offset when deciding when a note is due', () => {
+    const notes = [arrow('a', 10_000, 'up')];
+    const withoutOffset = toActiveArrows(chartWith(notes, 0));
+    const withOffset = toActiveArrows(chartWith(notes, 250));
+
+    // Same note, same due time, whatever the chart says its grid offset was.
+    expect(withOffset[0].timeMs).toBe(10_000);
+    expect(withOffset[0].timeMs).toBe(withoutOffset[0].timeMs);
+  });
+
+  it('judges a press at the written time as perfect, offset or no offset', () => {
+    const chart = chartWith([arrow('a', 10_000, 'up')], 250);
+    const [active] = toActiveArrows(chart);
+    expect(judgeDelta(Math.abs(10_000 - active.timeMs), DEFAULT_WINDOWS)).toBe('PERFECT');
   });
 });

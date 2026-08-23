@@ -72,10 +72,28 @@ them — each has a test that should be ported, not deleted:
 
 ## Part 1 — Architecture decisions
 
-Three places where the spec is ambiguous or, in my reading, wrong. Recorded
-rather than silently resolved in code.
+Three places where the spec was ambiguous or, in my reading, wrong. **All three
+are now decided by Vero and closed.**
 
-### ADR-001 — Lane identity is a direction, not a key. **Proposed: deviate from §8**
+### ADR-001 — Lane identity is a direction, not a key. **ACCEPTED**
+
+**Decision.** Charts store semantic lanes only: `left | down | up | right`, and
+never a physical key. WASD **and** the arrow keys are both supported by default,
+simultaneously and interchangeably — either key for a lane may be used, even
+within the same song:
+
+```
+W or ↑ → up      A or ← → left      S or ↓ → down      D or → → right
+```
+
+Input maps physical keys to semantic lanes before anything reaches Game Core, so
+future custom bindings can add or change keys without touching a single stored
+beatmap.
+
+**Status: already implemented.** `src/input/KeyboardInput.ts` maps both key sets,
+in both cases, to semantic lanes. No work required.
+
+<details><summary>Original argument</summary>
 
 §8 defines `lane: "W" | "A" | "S" | "D"`. §29 also lists **key bindings** as a
 stored user preference. Those two cannot both be true.
@@ -94,7 +112,27 @@ leaves `hold` notes and future 6-lane modes unaffected.
 **Cost of the alternative:** if `W|A|S|D` is kept, rebinding must be forbidden,
 or every chart must be rewritten whenever the default binding changes.
 
-### ADR-002 — `startAt` needs a clock offset, or it needs to be a duration. **Proposed: deviate from §23**
+</details>
+
+### ADR-002 — Round start is a relative delay. **ACCEPTED**
+
+**Decision.** A raw `serverTimestamp` is not the start signal. The round start
+message carries a relative delay:
+
+```ts
+ROUND_START { beatmapRevisionId, startInMs: 3000 }
+```
+
+Each client begins its countdown when the message arrives. Differences in
+network delivery are acceptable for MVP. Scoring uses each player's **local
+media playback clock**, never the server clock — start synchronisation keeps
+players approximately aligned and is not a judging clock. If playtesting shows
+visible drift, upgrade to a clock-offset system using ping/round-trip
+measurement.
+
+**Status: already implemented**, and covered by the three-clocks test in Part 4.
+
+<details><summary>Original argument</summary>
 
 §23 sends `ROUND_START { startAt: serverTimestamp }`. A server timestamp is only
 actionable if the client can convert it to its own clock, and two machines'
@@ -114,7 +152,29 @@ touching Game Core.** §24's actual requirement — the server decides *when*, t
 client's media clock decides *where* — is satisfied by either. (b) becomes worth
 it only when rounds start across the internet rather than a LAN.
 
-### ADR-003 — Note times are absolute; the timing map is authoring metadata. **Clarifies §7 vs §8**
+</details>
+
+### ADR-003 — Note times are absolute; the timing map is authoring metadata. **ACCEPTED**
+
+**Decision: approved as written.** A `Note.timeMs` is an absolute media time.
+The timing map describes the grid the notes were authored against, is used by
+the editor and by analysis, and is **never added to a note time at playback**.
+Changing a chart's offset in the editor rewrites note times and produces a new
+revision.
+
+**Status: implemented.** `arrowTimeMs()` no longer adds the offset, a stored
+chart carrying a non-zero offset has it folded into its note times once on read
+so it keeps playing identically, and the test that asserted the old behaviour
+has been inverted rather than deleted.
+
+**Correction to the original argument below:** it claimed the judge and the
+renderer could disagree. They could not — both read the single value
+`toActiveArrows` computes, so they always agreed with each other. The real
+defect was narrower and still worth fixing: `Arrow.timeMs` meant "relative to
+the grid" while `ActiveArrow.timeMs` meant "absolute". One name, two meanings,
+waiting to be confused.
+
+<details><summary>Original argument</summary>
 
 §8 gives each note an absolute `timeMs`. §7 gives the chart an `offsetMs`. If
 both are applied at playback, **the offset is counted twice** and every note is
@@ -132,17 +192,20 @@ convention and by nothing else.
 Changing a chart's offset in the editor rewrites note times and produces a new
 revision — which §6 already requires, since published revisions are immutable.
 
-### Noted, not deviations
+</details>
 
-- **Judgment windows.** Spec: `45/90/140/180`. Current: `35/70/110/160`. §12
-  says tune by playtesting; the new values ship as the default and the
-  difference goes on the playtest list.
-- **Self-reported scores.** §25 accepts unvalidated client scores; §3 puts
-  `scores` in Postgres. A stored score is therefore a *claim*. Any leaderboard
-  built on it must say so, or server-side judging must land first.
-- **Supabase free tier pauses a project after ~1 week of inactivity.** Fine for
-  development; a scheduled ping or a paid tier is needed before anyone else
-  relies on it.
+### Decided, and not deviations
+
+- **Judgment windows: keep `35/70/110/160`.** The spec's `45/90/140/180` was an
+  example, and §12 calls these provisional. The current values stay until
+  playtesting gives a reason to change them.
+- **Client-reported scores are accepted for MVP.** The server saves what the
+  client claims. That is fine for casual multiplayer, and it means a future
+  competitive leaderboard needs server-side validation before anyone calls it
+  cheat-resistant. Recorded so nobody later mistakes a stored number for a
+  verified one.
+- **Supabase free-tier pausing is a hosting concern, not a design one.** Fine
+  for development; production needs a plan that does not pause on inactivity.
 
 ---
 

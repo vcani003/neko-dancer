@@ -200,6 +200,25 @@ export function receivedRecord(chart: Chart, authoredBy?: string): StoredChart {
   };
 }
 
+/**
+ * Bring a chart up to ADR-003: note times absolute, offset not applied at play.
+ *
+ * A chart written before that rule may carry a non-zero `analysis.offsetMs`
+ * that used to be added at playback. Dropping the addition without moving the
+ * notes would shift that chart by the offset — so the offset is folded into the
+ * note times once, here, and the field is zeroed. The chart plays exactly as it
+ * did; only where the number lives has changed.
+ */
+export function absoluteNoteTimes(chart: Chart): Chart {
+  const offsetMs = chart.analysis?.offsetMs ?? 0;
+  if (!Number.isFinite(offsetMs) || offsetMs === 0) return chart;
+  return {
+    ...chart,
+    analysis: { ...chart.analysis, offsetMs: 0 },
+    arrows: chart.arrows.map((a) => ({ ...a, timeMs: Math.max(0, a.timeMs + offsetMs) })),
+  };
+}
+
 function refuseInvalid(chart: Chart): void {
   const result = validateChart(chart);
   // Refusing to store an invalid chart keeps the problem at the point it was
@@ -292,8 +311,8 @@ export class LocalChartStore implements ChartStore {
     }
     if (!parsed?.chart || !validateChart(parsed.chart).ok) return null;
 
-    const chart = parsed.chart;
-    if (parsed.id && parseChartId(parsed.id)) return parsed as StoredChart;
+    const chart = absoluteNoteTimes(parsed.chart);
+    if (parsed.id && parseChartId(parsed.id)) return { ...parsed, chart } as StoredChart;
 
     const song = songKey(chart);
     const author = authorSlug(parsed.authoredBy);

@@ -539,7 +539,8 @@ describe('a player the video will not load for', () => {
 
     await new Promise((r) => setTimeout(r, 400));
     const latest = [...vero.received].reverse().find((m) => m.type === 'room');
-    expect(latest.room.players.every((p: any) => p.canPlay !== 'no')).toBe(true);
+    expect(latest).toBeDefined();
+    expect(latest!.room.players.every((p: any) => p.canPlay !== 'no')).toBe(true);
 
     vero.close();
     friend.close();
