@@ -134,7 +134,9 @@ export function isHostileChar(code: number): boolean {
  */
 export function sanitiseText(value: unknown, limit: number): string | null {
   if (!isString(value)) return null;
-  return [...value]
+  // Trim BEFORE truncating. The other order spends the budget on whitespace:
+  // `'   abcdef'` at limit 4 becomes `'a'`.
+  return [...value.trim()]
     .filter((ch) => !isHostileChar(ch.codePointAt(0) ?? 0))
     .slice(0, limit)
     .join('')
@@ -169,11 +171,17 @@ function validateNote(
     return null;
   }
 
+  // Checked, never cleaned. `sanitiseText` is for text a person READS, where
+  // truncating is a kindness; an identifier is a thing a caller HOLDS, and
+  // silently returning a different one is how a caller loses its own note —
+  // or how two distinct ids sharing a 64-character prefix collide and the
+  // error names an id that neither note has.
+  //
+  // Bounded and charset-checked because this is the one identifier in the
+  // model with no shape rule of its own, and because two ids differing only by
+  // an invisible character would otherwise pass as distinct notes.
   const id = sanitiseText(input.id, MAX_NOTE_ID_LENGTH);
-  if (id === null || id.length === 0) {
-    // Bounded and cleaned because it is the one identifier in the model with no
-    // shape rule of its own — and because two ids differing only by an
-    // invisible character would otherwise pass as distinct notes.
+  if (id === null || id.length === 0 || id !== input.id) {
     errors.push(`${where} needs a readable id of at most ${MAX_NOTE_ID_LENGTH} characters.`);
     return null;
   }
@@ -482,6 +490,14 @@ export function validateRoundResult(input: unknown): Validated<RoundResult> {
  *
  * A malformed message is refused, never repaired. Guessing what someone meant
  * is how a validator becomes an attack surface.
+ *
+ * That governs the MESSAGE. An unusable value in an optional annotation falls
+ * back to its documented default instead, and `mediaResult.reason` is the case
+ * that matters: `ok: false` is unambiguous on its own, and refusing the whole
+ * message over an unreadable reason would lose the one fact the room needs —
+ * leaving that player blocking everyone until the preflight deadline. The
+ * attacker's string never survives either way; `'unknown'` is simply the honest
+ * label for "they did not tell us why".
  */
 export function parseClientMessage(input: unknown): Validated<ClientMessage> {
   if (!isPlainObject(input)) return fail('A message must be an object.');

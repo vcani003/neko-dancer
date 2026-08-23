@@ -35,11 +35,14 @@ export type ParticipantId = Branded<'ParticipantId'>;
 /**
  * The shape every generated id must have.
  *
- * UUID v4, lowercase, hyphenated. Fixed length and a closed character set,
+ * UUID v4, lowercase, hyphenated — and the `4` is checked, not just described.
+ * The variant nibble was enforced while the version was not, so a v1 (which
+ * encodes a MAC address and a timestamp) passed a function whose whole purpose
+ * is untrusted input. Fixed length and a closed character set,
  * which is what makes an id safe to put in a URL, a filename or a log line
  * without escaping it. `RoomId` is the one exception — see below.
  */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID.test(value);

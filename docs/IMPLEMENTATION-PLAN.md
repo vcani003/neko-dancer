@@ -451,14 +451,48 @@ in-passing edit.
 Ordered by dependency, not by appetite. Nothing in a phase starts until the
 previous phase's gate is green.
 
-### Phase 0 — Freeze and contract
+### Phase 0 — Freeze and contract. **CLOSED**
 
-Feature work stops. Architecture writes `packages/contracts`: `Song`, `Beatmap`,
+Feature work stopped. Architecture wrote `packages/protocol`: `Song`, `Beatmap`,
 `ChartRevision`, `Note`, `TimingPoint`, `User`, `Playlist`, room messages,
-judgments. ADR-001/002/003 resolved by Vero.
+judgments. ADR-001 through ADR-008 resolved by Vero.
 
-**Gate:** contracts compile, are imported by nothing yet, and Validation has
-written type-level and fixture tests against them.
+**Gate met.** Contracts compile under `strict`, `noUncheckedIndexedAccess` and
+`erasableSyntaxOnly`; nothing imports them yet; Validation wrote **657 tests**
+in `packages/protocol/tests/`, all passing, inside a full suite of 921.
+
+Two rounds of independent review, and the second one found three real defects
+the first pass had left:
+
+1. **A note id was silently truncated.** `sanitiseText` was reused for an
+   identifier. Truncating text a person reads is a kindness; truncating a thing
+   a caller *holds* means the caller can no longer find its own note — and two
+   ids sharing a 64-character prefix collided with an error naming an id that
+   neither note had. Ids are now checked, never cleaned.
+2. **`readonly` was applied to two files out of three.** `RoomPlayer.progress`
+   was a readonly reference to a mutable object, so another player's score was
+   writable. One missed field reopened the hole every other entity was closed
+   to prevent.
+3. **The UUID pattern checked the variant nibble and not the version**, while
+   its comment promised v4. A v1 — which encodes a MAC address and a timestamp
+   — passed a function whose entire purpose is untrusted input.
+
+**The type-level tests are executable, not decorative.** `expectTypeOf` and
+`@ts-expect-error` are inert unless something type-checks the file, and vitest
+transpiles without checking — so the suite runs the TypeScript compiler API
+over a fixture and asserts zero diagnostics. An unused `@ts-expect-error`
+reports as TS2578 and turns the test red, which is how defect 2 surfaced.
+
+**Two decisions taken while closing it:**
+
+- **`mediaResult.reason` outside the closed set degrades to `'unknown'` rather
+  than refusing the message.** "Refused, never repaired" governs the *message*;
+  an unusable optional annotation falls back to its documented default. `ok:
+  false` is unambiguous on its own, and refusing over an unreadable reason would
+  lose the one fact the room needs — leaving that player blocking everyone until
+  the preflight deadline.
+- **`sanitiseText` trims before truncating.** The other order spent the budget
+  on whitespace: `'   abcdef'` at limit 4 became `'a'`.
 
 ### Phase 1 — Game Core (parallel with 2 and 3)
 

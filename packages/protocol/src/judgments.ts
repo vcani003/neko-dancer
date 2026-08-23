@@ -64,16 +64,16 @@ export const DEFAULT_WINDOWS: JudgmentWindows = {
  * leaderboard needs server-side judging first.
  */
 export interface PlayerProgress {
-  score: number;
-  combo: number;
-  accuracy: number;
-  health: number;
+  readonly score: number;
+  readonly combo: number;
+  readonly accuracy: number;
+  readonly health: number;
 }
 
 /** The end of a run, as reported by the player who ran it. Also a claim. */
 export interface RoundResult extends PlayerProgress {
-  maxCombo: number;
-  counts: Readonly<Record<Judgment, number>>;
+  readonly maxCombo: number;
+  readonly counts: Readonly<Record<Judgment, number>>;
   /** False when health ran out before the last note. */
-  completed: boolean;
+  readonly completed: boolean;
 }
