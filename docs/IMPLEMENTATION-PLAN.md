@@ -20,10 +20,10 @@ position produces schedules nobody can hit.
 |---|---|
 | §27 chat never accepts a client username | `server/index.mjs` broadcasts `from: player.name`, read from the socket's own player |
 | §10 position derived from media time | `LaneRenderer` computes `active.timeMs - state.playbackTimeMs` per frame; nothing accumulates |
-| §13 chart offset ≠ player calibration | Chart offset applied at note read; calibration applied in `GameClock`. Two values, two places |
+| §13 chart offset ≠ player calibration | Calibration applied in `GameClock`; the chart offset is authoring metadata and never reaches playback (ADR-003) |
 | §24 judgment on the local media clock | `GameClock` samples the adapter; the server's countdown never touches judging |
 | §26 lobby video preflight | Built and tested — `checkVideoPlayable()` plus `CAN_PLAY`, 5 protocol tests |
-| §9 engine independent of React/YouTube/WS | `src/engine/`, `src/charts/`, `src/analysis/` are already pure. 251 tests run with no browser |
+| §9 engine independent of React/YouTube/WS | `src/engine/`, `src/charts/`, `src/analysis/` are already pure. 256 tests run with no browser |
 
 ### Survives, and moves
 
