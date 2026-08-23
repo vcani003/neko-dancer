@@ -66,45 +66,39 @@ and YouTube refuses restriction-bearing videos on one.
 
 ---
 
-## So why are other players still seeing it?
+## RESOLVED — it is the link, not the video
 
-Two possibilities, and **I cannot tell them apart without one piece of
-information I do not have: the video id.**
+I had been asking for the video id to separate two cases. I already had it.
 
-**(a) They are still on the IP link.** The server only started recommending
-`http://veronicas-macbook-air.local:5181` recently. Anyone using the numeric
-address, or a bookmark from before, hits the restricted case every time.
+`7aMOurgDB-o` — the link supplied earlier in this session — **is** the Tokyo
+Ghoul video. YouTube's oEmbed endpoint returns its title, and it matches the
+chart in the screenshot exactly:
 
-**(b) That particular video is blocked everywhere.** "Tokyo Ghoul Opening |
-Unravel by TK from Ling Toshite Sigure" is a commercial anime opening. Official
-label and anime uploads are among the most commonly embed-restricted content on
-YouTube, and for those, *no origin helps*.
+    7aMOurgDB-o  HTTP 200  Tokyo Ghoul Opening | "Unravel" by TK from Li…
 
-**The test that separates them:** open the song on
-`veronicas-macbook-air.local:5181`. If it plays there and not on the IP, it is
-(a) and the fix is the link. If it fails on both, it is (b) and the fix is a
-different upload.
+So the measurements already taken are measurements of the failing song:
 
----
+| Origin | This exact video | Runs |
+|---|---|---|
+| `http://localhost:5181` | **plays** | 3/3 |
+| `http://veronicas-macbook-air.local:5181` | **plays** | 6/6 (hidden, small and visible mounts) |
+| `http://192.168.4.101:5181` | **error 150** | 5/5 |
 
-## The uncomfortable part
+**The uploader has not disabled embedding.** The video embeds perfectly well.
+It refuses on the numeric address because **a bare IP is not a domain**, and
+YouTube evaluates a restriction-bearing video against the origin it is asked to
+play in.
 
-If (b) — and for a commercial anime opening it very likely is — then the problem
-is not a bug to fix. **It is that YouTube is a hostile foundation for the exact
-songs people most want to chart.** The more popular and more official the
-upload, the more likely it refuses to embed.
+That is the entire bug. Everyone seeing this message is on the IP link.
 
-That does not kill the design; §22 is still right that the server should never
-touch media. But it changes what "working multiplayer" needs:
+### Why the error message is misleading, and that is partly our fault
 
-1. **Charting must check embeddability at creation time**, not at round time.
-   Charting a song nobody else can play is wasted work, and the current flow
-   only finds out when everyone is already in the lobby waiting.
-2. **The library should record it.** `Song` can carry an `embeddable` flag from
-   the last check, so the browser can warn before anyone picks.
-3. **There should be a media source that cannot fail.** See below.
-
----
+Error 150 means "not allowed in this embed context". We render it as *"the
+uploader does not allow this video to play outside YouTube"* with the hint
+*"nothing here can change that — pick a different upload"*. For a
+genuinely-disabled video that is right. For an origin rejection it is **wrong
+and actively misdirecting** — it sends you hunting for a different upload when
+the fix is a different URL.
 
 ## Answers to the three questions
 
@@ -155,48 +149,105 @@ and nothing can.
 
 ---
 
-## Plan
+## The real problem, stated properly
 
-Ordered by what unblocks playing together soonest, not by size.
+**YouTube will not embed restriction-bearing videos on an origin that is not a
+domain name.** Our development setup serves the game from a bare IP, so we hit
+it constantly — and it will hit *every* friend joining over the LAN by address.
 
-### 0. Establish which case this is — you, five minutes
+This is not a property of the video, the chart, the room or the protocol. It is
+a property of the URL people open. And it has a permanent fix, because the game
+is not supposed to live on a LAN IP forever — §1 says *you play against the
+whole world*.
 
-Open the song on `http://veronicas-macbook-air.local:5181`. Tell me whether it
-plays. Everything below branches on the answer, and I am not going to build for
-both.
+Everything below is about giving the game a **domain**.
 
-### 1. Take YouTube out of the multiplayer test — small, high value
+---
 
-`~/Desktop/code/copyright-free music/` has four mp3s and the schema already
-supports a `localAudio` provider. Served by your own server, both machines fetch
-byte-identical audio with **no embedding, region or age restriction possible.**
+## Solutions — pick one for now, one for later
 
-This is the change I would make first. It means the next time multiplayer
-breaks, you are debugging your game rather than YouTube's policies — and right
-now you cannot tell those apart, which is precisely the position we have been
-stuck in for three rounds.
+### A. The mDNS hostname — works today, zero effort
 
-### 2. Check embeddability when charting, not when playing — medium
+`http://veronicas-macbook-air.local:5181`. Measured playing this exact video
+6/6. macOS publishes it; macOS and iOS resolve it natively; Windows has since
+version 1803.
 
-Run the existing `checkVideoPlayable` at the point a song is added. If it fails,
-say so before ten minutes of tapping. Record the result on the song so the
-library can mark a chart *"may not play for everyone"*.
+- **Cost:** none. Already implemented and already printed by the server.
+- **Risk:** resolution is the whole question. Some Windows setups, most Android,
+  and many corporate or guest networks do not do mDNS. If a friend cannot
+  resolve it, they are stuck on the IP and back to square one.
+- **Verdict:** try this first tonight, because it takes thirty seconds. It is
+  not a foundation.
 
-This is the real product fix for (b), and it is the same function already
-written — moved earlier in the flow.
+### B. Tailscale — a stable name, and it works off the LAN
 
-### 3. Make the link unmistakable — small
+Tailscale gives each machine a DNS name (`vero-air.tailnet-xxxx.ts.net`) that
+resolves anywhere, on every OS, without touching a router.
 
-The banner recommends the hostname, but a bookmark does not read banners. Show
-the current origin in the lobby, with a warning when it is a bare IP: *"you are
-on a numeric address; some videos will not play. Use
-veronicas-macbook-air.local:5181."*
+- **Cost:** an install on both machines, no code changes.
+- **Gain:** a real hostname, and your friends no longer need to be in the house.
+- **Risk:** they have to install something. That is a real ask for a friend who
+  just wants to play a game.
 
-### 4. A rung-4 smoke test — small
+### C. A tunnel to a real domain with HTTPS — the strongest short-term fix
 
-One known-good and one known-blocked video through the real adapter, asserting
-we classify both correctly. Guards our handling; cannot guard YouTube.
+`cloudflared tunnel --url http://localhost:5181` hands back a public
+`https://<random>.trycloudflare.com`. A genuine domain, genuine TLS, works from
+anywhere, nothing to install for whoever joins.
 
-### Not now
+- **Cost:** one command, one dependency on your machine.
+- **Gain:** removes the origin class of failure **permanently**, and removes
+  "are you on the right link" as a question. HTTPS also puts us on the same
+  footing as every other site YouTube embeds on.
+- **Risk, and it is the real one:** it puts the server on the public internet,
+  and `SECURITY.md` is explicit that it is not ready for that — no
+  authentication, client-reported scores, and rate limits sized for friends
+  rather than strangers. The URL is unguessable and temporary, which is
+  mitigation rather than security.
+- **Verdict:** the best answer for *playing together this week*, if you accept
+  that the URL is a secret and you stop the tunnel afterwards.
 
-A database. Storybook. Anything in Phase 3+. None of them touch this.
+### D. Deploy it properly — the destination
+
+Client on Pages or Vercel, server on Fly/Railway/Render, one domain, HTTPS.
+
+- **Cost:** real. It needs auth (Phase 6) and the §4 security work before it
+  should hold strangers.
+- **Gain:** the origin problem never returns, and it is where the project is
+  going regardless.
+- **Verdict:** this is the answer. It is Phase 3–6, not tonight.
+
+### E. Fix the misleading error — small, and independent of the above
+
+Error 150 is rendered as "the uploader does not allow this video outside
+YouTube", which is one of its two meanings. When the page origin is a bare IP,
+say the other one:
+
+> This address is a number, not a name. YouTube blocks many videos on numeric
+> addresses. Open `http://veronicas-macbook-air.local:5181` instead.
+
+We sent you hunting for a different upload when the fix was a different URL.
+That is our error message doing damage, and it is a twenty-line fix.
+
+### F. Warn before anyone charts — small, complementary
+
+Show the origin in the lobby and warn when it is numeric, and run the existing
+`checkVideoPlayable` when a song is **added** rather than when it is played, so
+nobody taps for ten minutes against a song their friends cannot hear. Records
+the result on the song for the library.
+
+Worth doing whichever of A–D you choose, because genuinely embed-disabled videos
+do exist and this is what catches them.
+
+---
+
+## What "done" means for this, restated in your terms
+
+> Both players play the same map, from YouTube, to the end.
+
+That is rung 5, and it is the only rung that counts here. My recommendation for
+getting there fastest:
+
+1. **Tonight:** A (hostname). If your friend cannot resolve it, C (tunnel).
+2. **This week:** E and F, so the failure can never present as a mystery again.
+3. **Phase 3–6:** D, which retires the problem.
