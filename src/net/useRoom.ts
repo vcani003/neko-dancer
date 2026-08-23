@@ -55,6 +55,16 @@ export interface RoomPlayer {
   /** 'unknown' until this player's browser has actually tried the song. */
   canPlay: 'unknown' | 'yes' | 'no';
   cannotPlayReason: string | null;
+  /** The lane they last hit, so their cat poses on everyone's screen. */
+  lastLane: 'left' | 'down' | 'up' | 'right' | null;
+  /**
+   * How many presses they have made this round.
+   *
+   * A counter, not a timestamp — a receiver stamps its own arrival time.
+   * Sending the sender's clock would be sending a number from a machine that
+   * disagrees with this one about what time it is.
+   */
+  pressCount: number;
 }
 
 export interface RoomRound {

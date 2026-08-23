@@ -122,6 +122,15 @@ export default function App() {
   const [countdownLeft, setCountdownLeft] = useState(0);
   // The round effect is declared above `start`; a ref bridges the ordering.
   const startRef = useRef<() => Promise<void>>(async () => {});
+  /**
+   * Lanes pressed since the last score update, drained on each send.
+   *
+   * A ref rather than state: this is written on every keypress, and a
+   * setState per press would put React's scheduler in the hot path.
+   */
+  const pressedLanesRef = useRef<Lane[]>([]);
+  /** What we last saw of everyone else's presses, so a repeat does not re-pose. */
+  const seenPressesRef = useRef(new Map<string, number>());
 
   /**
    * Milliseconds added to judged time.
@@ -337,6 +346,11 @@ export default function App() {
         // find out whether it was a good hit is a dancer that lags behind the
         // player's own hands.
         rendererRef.current?.reactToPress(lane, performance.now());
+        // Queued for the next score update rather than sent now — see the
+        // batching note in Room.updateScore. Capped, because a chart dense
+        // enough to exceed four presses in 100 ms only needs the last few to
+        // look right.
+        if (pressedLanesRef.current.length < 4) pressedLanesRef.current.push(lane);
         const event = engine.pressLane(lane, atMs);
         if (event) present([event]);
       },
@@ -399,7 +413,14 @@ export default function App() {
       if (!engine || !clock) return;
       const score = engine.getScore();
       setHud({ score, playbackTimeMs: clock.rawTimeMs(), durationMs });
-      room.send(C2S.SCORE, { score: score.score, combo: score.combo, health: score.health });
+      const lanes = pressedLanesRef.current;
+      pressedLanesRef.current = [];
+      room.send(C2S.SCORE, {
+        score: score.score,
+        combo: score.combo,
+        health: score.health,
+        ...(lanes.length > 0 ? { lanes } : {}),
+      });
     }, HUD_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [phase, durationMs, room]);
@@ -614,10 +635,37 @@ export default function App() {
 
   useEffect(() => {
     const roster = room.room?.players ?? [];
-    playersRef.current =
-      roster.length > 0
-        ? roster.map((p) => ({ id: p.id, name: p.name, isMe: p.id === room.playerId }))
-        : [{ id: 'me', name: name || 'you', isMe: true }];
+    if (roster.length === 0) {
+      playersRef.current = [{ id: 'me', name: name || 'you', isMe: true }];
+      return;
+    }
+
+    const seen = seenPressesRef.current;
+    const previous = new Map(playersRef.current.map((p) => [p.id, p]));
+
+    playersRef.current = roster.map((p) => {
+      const isMe = p.id === room.playerId;
+      // The local cat is posed by the renderer from what it saw directly, a
+      // frame earlier than anything a socket could deliver. Everyone else's
+      // comes from the room.
+      if (isMe) return { id: p.id, name: p.name, isMe };
+
+      const before = seen.get(p.id) ?? 0;
+      const moved = p.pressCount > before;
+      if (moved) seen.set(p.id, p.pressCount);
+
+      // Stamped on ARRIVAL, never with the sender's clock. Two machines do not
+      // agree on the time, and a pose driven by someone else's timestamp
+      // either jumps or never fires.
+      return {
+        id: p.id,
+        name: p.name,
+        isMe,
+        lane: p.lastLane ?? previous.get(p.id)?.lane ?? null,
+        hitAtMs: moved ? performance.now() : (previous.get(p.id)?.hitAtMs ?? 0),
+        missAtMs: previous.get(p.id)?.missAtMs ?? 0,
+      };
+    });
   }, [room.room, room.playerId, name]);
   const score = hud.score;
   const live = phase === 'playing';

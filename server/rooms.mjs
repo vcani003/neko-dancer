@@ -76,6 +76,9 @@ export function cleanTitle(title) {
   return cleaned.length > 0 ? cleaned : 'a song';
 }
 
+/** Lanes are directions, never keys — ADR-001. Validated before echoing. */
+const LANES = ['left', 'down', 'up', 'right'];
+
 export class Room {
   constructor(id) {
     this.id = id;
@@ -107,6 +110,9 @@ export class Room {
       /** 'unknown' until their browser has actually tried the current song. */
       canPlay: 'unknown',
       cannotPlayReason: null,
+      /** The lane they last hit, so their cat poses on everyone's screen. */
+      lastLane: null,
+      pressCount: 0,
     };
     this.players.set(id, player);
     return player;
@@ -124,12 +130,29 @@ export class Room {
     return this.players.size === 0;
   }
 
-  updateScore(id, { score, combo, health }) {
+  updateScore(id, { score, combo, health, lanes }) {
     const player = this.players.get(id);
     if (!player) return;
     if (Number.isFinite(score)) player.score = Math.max(0, Math.round(score));
     if (Number.isFinite(combo)) player.combo = Math.max(0, Math.round(combo));
     if (Number.isFinite(health)) player.health = Math.min(100, Math.max(0, health));
+
+    // Lanes pressed since this player's last update, so everyone else can see
+    // them move. Batched onto the score message rather than sent per press:
+    // the rate limit allows 20 messages a second and a dense chart is more
+    // presses than that, so a message-per-press would disconnect the best
+    // player in the room.
+    if (Array.isArray(lanes) && lanes.length > 0) {
+      const lane = lanes[lanes.length - 1];
+      if (LANES.includes(lane)) {
+        player.lastLane = lane;
+        // A counter rather than a timestamp. Receivers stamp their own arrival
+        // time — the same reason a round start is a duration and not an
+        // instant (ADR-002): two machines' clocks do not agree, and a pose
+        // driven by someone else's clock jumps.
+        player.pressCount = (player.pressCount ?? 0) + 1;
+      }
+    }
   }
 
   /**
@@ -157,6 +180,8 @@ export class Room {
         // times a second.
         canPlay: p.canPlay ?? 'unknown',
         cannotPlayReason: p.cannotPlayReason ?? null,
+        lastLane: p.lastLane ?? null,
+        pressCount: p.pressCount ?? 0,
       }));
   }
 
@@ -273,6 +298,8 @@ export class Room {
       player.combo = 0;
       player.health = 100;
       player.finished = false;
+      player.lastLane = null;
+      player.pressCount = 0;
     }
     return this.round;
   }

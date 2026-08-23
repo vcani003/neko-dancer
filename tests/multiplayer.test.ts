@@ -666,3 +666,97 @@ describe('a second round', () => {
     friend.close();
   });
 });
+
+/**
+ * Seeing each other move.
+ *
+ * Without this a round looks like one person playing while everybody else
+ * stands still — the renderer was always able to pose every cat, but nothing
+ * ever told it what the other players were doing.
+ *
+ * Presses ride on the existing score update rather than a message of their own.
+ * The rate limit allows 20 messages a second and a dense chart is more presses
+ * than that, so a message-per-press would disconnect whoever was playing best.
+ */
+describe('other players moving', () => {
+  it('carries the lane someone pressed to everyone else', async () => {
+    const vero = await connect('Vero', 'movement');
+    const friend = await connect('Friend', 'movement');
+
+    vero.send('score', { score: 100, combo: 2, health: 100, lanes: ['left', 'up'] });
+
+    const state = await friend.waitFor('room', (m) =>
+      m.room.players.some((p: any) => p.lastLane !== null),
+    );
+    const veroSeenByFriend = state.room.players.find((p: any) => p.name === 'Vero');
+    // The LAST lane of the batch — that is the pose they are in now.
+    expect(veroSeenByFriend.lastLane).toBe('up');
+    expect(veroSeenByFriend.pressCount).toBe(1);
+
+    vero.close();
+    friend.close();
+  });
+
+  it('advances a counter rather than sending a timestamp', async () => {
+    const vero = await connect('Vero', 'presscount');
+    const friend = await connect('Friend', 'presscount');
+
+    vero.send('score', { score: 1, combo: 1, health: 100, lanes: ['left'] });
+    await friend.waitFor('room', (m) =>
+      m.room.players.some((p: any) => p.pressCount === 1),
+    );
+    vero.send('score', { score: 2, combo: 2, health: 100, lanes: ['right'] });
+
+    const second = await friend.waitFor('room', (m) =>
+      m.room.players.some((p: any) => p.pressCount === 2),
+    );
+    const seen = second.room.players.find((p: any) => p.name === 'Vero');
+    expect(seen.lastLane).toBe('right');
+    // No timestamp crosses the wire. Receivers stamp their own arrival, for the
+    // same reason a round start is a duration and not an instant — ADR-002.
+    expect(JSON.stringify(seen)).not.toMatch(/atMs|timestamp/i);
+
+    vero.close();
+    friend.close();
+  });
+
+  it('refuses a lane that is not a lane', async () => {
+    const vero = await connect('Vero', 'badlane');
+    const friend = await connect('Friend', 'badlane');
+
+    vero.send('score', { score: 1, combo: 1, health: 100, lanes: ['__proto__'] });
+    vero.send('score', { score: 2, combo: 1, health: 100, lanes: ['W'] });
+    vero.send('score', { score: 3, combo: 1, health: 100, lanes: [{ evil: true }] });
+
+    await friend.waitFor('room', (m) => m.room.players.some((p: any) => p.score === 3));
+    const latest = [...friend.received].reverse().find((m) => m.type === 'room');
+    const seen = latest!.room.players.find((p: any) => p.name === 'Vero');
+    expect(seen.lastLane).toBeNull();
+    expect(seen.pressCount).toBe(0);
+
+    vero.close();
+    friend.close();
+  });
+
+  it('clears movement between rounds', async () => {
+    const vero = await connect('Vero', 'movereset');
+    const friend = await connect('Friend', 'movereset');
+
+    vero.send('pickSong', { chart: CHART });
+    await friend.waitFor('song');
+    vero.send('score', { score: 500, combo: 5, health: 100, lanes: ['down'] });
+    await friend.waitFor('room', (m) => m.room.players.some((p: any) => p.lastLane === 'down'));
+
+    vero.send('ready', { ready: true });
+    friend.send('ready', { ready: true });
+
+    // A new round starts everyone standing still, not mid-pose from the last one.
+    const fresh = await friend.waitFor('room', (m) =>
+      m.room.players.every((p: any) => p.pressCount === 0 && p.lastLane === null),
+    );
+    expect(fresh.room.players.every((p: any) => p.score === 0)).toBe(true);
+
+    vero.close();
+    friend.close();
+  });
+});

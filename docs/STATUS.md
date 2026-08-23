@@ -18,13 +18,20 @@ decisions live in full in its Part 1. This page is the index and the checklist.
 | ✅ | Gate the Play button — no independent start while in a room |
 | ✅ | Shared ranked results — everyone sees everyone, live while others finish |
 | ✅ | Back to the lobby after a round, un-readied |
-| ⬜ | **Rung 5: you and one other person finish a round together** |
+| ✅ | **Rung 5: a round played together, confirmed synchronised** |
+| ✅ | Everyone's cat moves on everyone's screen |
 
 P0 is not "passing" until that last line is ticked. Rungs 1–3 are green and have
 been green through every failure so far — see `DIAGNOSIS-media.md`.
 
 **Next up: P1** — prepare-before-countdown (so nobody starts mid-buffer),
 `roundAbort`, and showing disconnects.
+
+Also open, and now worth deciding: **browser-level tests**. 1146 tests could not
+see the Play-button bug, because the multiplayer suite drives raw sockets and
+the bug was a button. Playwright with one browser context per player would
+catch that class. It cannot catch real clock skew between two machines — two
+contexts on one machine share a clock — so it replaces rung 5a, not 5b.
 
 ---
 
@@ -93,7 +100,7 @@ Each of these cost real time. Full write-ups in `PLAYTEST-FINDINGS.md` and
 
 | | |
 |---|---|
-| Tests | **1142** across 35 files |
+| Tests | **1146** across 35 files |
 | Contracts | `@neko/protocol` — 657 tests |
 | Engine | `@neko/game-core` — 219 tests |
 | Protocol suite | 25 real-socket tests |
