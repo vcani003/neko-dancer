@@ -53,5 +53,19 @@ export const ROUND_GRACE_MS = 90_000;
 /** ADR-002: a relative delay, never a server timestamp. */
 export const COUNTDOWN_MS = 3000;
 
+/**
+ * How long the room waits for everyone to answer "can you play this?".
+ *
+ * The same hazard as ROUND_GRACE_MS, one state earlier and easy to miss: a
+ * client that receives `roundPrepare` and never replies leaves the room in
+ * `preparing` for ever. Guarding `playing` and not `preparing` would have left
+ * the bug reachable through the door next to the one we locked.
+ */
+export const PREFLIGHT_TIMEOUT_MS = 15_000;
+
+/** Bounds on a self-reported run, so a bad claim cannot be an absurd one. */
+export const MAX_COMBO = 100_000;
+export const MAX_NOTE_ID_LENGTH = 64;
+
 /** A score above this is not a score. Bounds the damage of a bad claim. */
 export const MAX_PLAUSIBLE_SCORE = 5_000_000;

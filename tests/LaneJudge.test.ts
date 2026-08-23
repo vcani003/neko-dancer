@@ -16,15 +16,15 @@ describe('judgeDelta — five tiers', () => {
   it('lands exactly on each boundary', () => {
     expect(judgeDelta(0)).toBe('PERFECT');
     expect(judgeDelta(35)).toBe('PERFECT');
-    expect(judgeDelta(70)).toBe('NICE');
-    expect(judgeDelta(110)).toBe('OKAY');
-    expect(judgeDelta(160)).toBe('OOPS');
+    expect(judgeDelta(70)).toBe('GREAT');
+    expect(judgeDelta(110)).toBe('GOOD');
+    expect(judgeDelta(160)).toBe('OKAY');
   });
 
   it('drops a tier one millisecond past each boundary', () => {
-    expect(judgeDelta(35.001)).toBe('NICE');
-    expect(judgeDelta(70.001)).toBe('OKAY');
-    expect(judgeDelta(110.001)).toBe('OOPS');
+    expect(judgeDelta(35.001)).toBe('GREAT');
+    expect(judgeDelta(70.001)).toBe('GOOD');
+    expect(judgeDelta(110.001)).toBe('OKAY');
     expect(judgeDelta(160.001)).toBe('MISS');
   });
 
@@ -39,7 +39,7 @@ describe('judgeDelta — five tiers', () => {
   });
 
   it('honours custom windows', () => {
-    const loose = { perfectMs: 60, niceMs: 120, okayMs: 180, oopsMs: 250 };
+    const loose = { perfectMs: 60, greatMs: 120, goodMs: 180, okayMs: 250 };
     expect(judgeDelta(55, loose)).toBe('PERFECT');
     expect(judgeDelta(255, loose)).toBe('MISS');
   });
@@ -96,17 +96,17 @@ describe('findClaimableArrow', () => {
 
 describe('collectExpiredArrows', () => {
   it('does not expire an arrow still exactly reachable', () => {
-    expect(collectExpiredArrows(active([arrow('a', 1000)]), 1000 + DEFAULT_WINDOWS.oopsMs)).toEqual([]);
+    expect(collectExpiredArrows(active([arrow('a', 1000)]), 1000 + DEFAULT_WINDOWS.okayMs)).toEqual([]);
   });
 
   it('expires one millisecond past the last window', () => {
-    const expired = collectExpiredArrows(active([arrow('a', 1000)]), 1000 + DEFAULT_WINDOWS.oopsMs + 1);
+    const expired = collectExpiredArrows(active([arrow('a', 1000)]), 1000 + DEFAULT_WINDOWS.okayMs + 1);
     expect(expired.map((a) => a.arrow.id)).toEqual(['a']);
   });
 
   it('never expires something already judged', () => {
     const arrows = active([arrow('a', 1000)]);
-    arrows[0].judgment = 'OKAY';
+    arrows[0].judgment = 'GOOD';
     expect(collectExpiredArrows(arrows, 99_999)).toEqual([]);
   });
 });

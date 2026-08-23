@@ -12,16 +12,16 @@
 import type { Arrow, Chart, Lane } from '../charts/schema.ts';
 import { arrowTimeMs } from '../charts/schema.ts';
 
-export type Judgment = 'PERFECT' | 'NICE' | 'OKAY' | 'OOPS' | 'MISS';
+export type Judgment = 'PERFECT' | 'GREAT' | 'GOOD' | 'OKAY' | 'MISS';
 
 /** Ordered best to worst, for anything that needs to rank them. */
-export const JUDGMENTS: readonly Judgment[] = ['PERFECT', 'NICE', 'OKAY', 'OOPS', 'MISS'];
+export const JUDGMENTS: readonly Judgment[] = ['PERFECT', 'GREAT', 'GOOD', 'OKAY', 'MISS'];
 
 export interface TimingWindows {
   perfectMs: number;
-  niceMs: number;
+  greatMs: number;
+  goodMs: number;
   okayMs: number;
-  oopsMs: number;
 }
 
 /**
@@ -33,9 +33,9 @@ export interface TimingWindows {
  */
 export const DEFAULT_WINDOWS: TimingWindows = {
   perfectMs: 35,
-  niceMs: 70,
-  okayMs: 110,
-  oopsMs: 160,
+  greatMs: 70,
+  goodMs: 110,
+  okayMs: 160,
 };
 
 export interface ActiveArrow {
@@ -61,9 +61,9 @@ export function judgeDelta(
   windows: TimingWindows = DEFAULT_WINDOWS,
 ): Judgment {
   if (absDeltaMs <= windows.perfectMs) return 'PERFECT';
-  if (absDeltaMs <= windows.niceMs) return 'NICE';
+  if (absDeltaMs <= windows.greatMs) return 'GREAT';
+  if (absDeltaMs <= windows.goodMs) return 'GOOD';
   if (absDeltaMs <= windows.okayMs) return 'OKAY';
-  if (absDeltaMs <= windows.oopsMs) return 'OOPS';
   return 'MISS';
 }
 
@@ -88,7 +88,7 @@ export function findClaimableArrow(
     if (active.judgment !== null) continue;
     if (active.arrow.lane !== lane) continue;
     const delta = Math.abs(playbackTimeMs - active.timeMs);
-    if (delta > windows.oopsMs) continue;
+    if (delta > windows.okayMs) continue;
     if (delta < bestDelta) {
       bestDelta = delta;
       best = active;
@@ -110,7 +110,7 @@ export function collectExpiredArrows(
   windows: TimingWindows = DEFAULT_WINDOWS,
 ): ActiveArrow[] {
   return arrows.filter(
-    (active) => active.judgment === null && playbackTimeMs > active.timeMs + windows.oopsMs,
+    (active) => active.judgment === null && playbackTimeMs > active.timeMs + windows.okayMs,
   );
 }
 

@@ -24,9 +24,9 @@ const LANE_COLOUR: Record<Lane, number> = {
 
 const JUDGMENT_COLOUR: Record<Judgment, number> = {
   PERFECT: 0x4ade80,
-  NICE: 0x38bdf8,
-  OKAY: 0xf5c451,
-  OOPS: 0xfb923c,
+  GREAT: 0x38bdf8,
+  GOOD: 0xf5c451,
+  OKAY: 0xfb923c,
   MISS: 0xf87171,
 };
 

@@ -841,7 +841,7 @@ export default function App() {
               </div>
 
               <div className="results__grid">
-                {(['PERFECT', 'NICE', 'OKAY', 'OOPS', 'MISS'] as const).map((j) => (
+                {(['PERFECT', 'GREAT', 'GOOD', 'OKAY', 'MISS'] as const).map((j) => (
                   <div key={j}>
                     <span className="results__k">{j}</span>
                     <span className="results__v mono">{score.counts[j]}</span>

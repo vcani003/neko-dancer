@@ -71,11 +71,27 @@ export function toRoomId(input: string): RoomId | null {
 }
 
 /**
- * Assert a value is an id of a given kind.
+ * The ids that are UUIDs. `RoomId` is deliberately not among them.
  *
- * The only sanctioned way to turn an untrusted string into a branded id. Named
- * for what it does at a boundary — everywhere else, ids arrive already typed.
+ * `asId` used to accept any branded type, which meant `asId<RoomId>(x)`
+ * type-checked and then returned null for every valid room id, for ever,
+ * silently — a boundary written the obvious way was dead code.
  */
-export function asId<T extends Branded<string>>(value: unknown): T | null {
+export type UuidId = UserId | SongId | BeatmapId | RevisionId | PlaylistId | ParticipantId;
+
+/**
+ * Turn an untrusted string into a branded id, or fail.
+ *
+ * Checks the UUID *shape*. It cannot check the *kind* — a `SongId` and a
+ * `BeatmapId` are the same 36 characters at runtime — so the caller names the
+ * kind it is expecting and is trusted about that one thing. Everywhere past a
+ * boundary, ids arrive already typed and the compiler keeps them apart.
+ */
+export function asId<T extends UuidId>(value: unknown): T | null {
   return isUuid(value) ? (value as T) : null;
+}
+
+/** Mint a new id. The one sanctioned way to create one. */
+export function newId<T extends UuidId>(): T {
+  return crypto.randomUUID() as T;
 }

@@ -23,7 +23,13 @@ import type {
 
 // ---------------------------------------------------------------- media ----
 
-export const MEDIA_PROVIDERS = ['youtube'] as const;
+/**
+ * `youtube` is the only provider a *user* can add. The other two exist because
+ * Part 4's determinism rule is absolute — no automated test may require
+ * YouTube — so every fixture needs a `Song` this type can describe. The repo
+ * already ships adapters for both.
+ */
+export const MEDIA_PROVIDERS = ['youtube', 'clickTrack', 'localAudio'] as const;
 export type MediaProviderName = (typeof MEDIA_PROVIDERS)[number];
 
 /**
@@ -46,14 +52,14 @@ export interface MediaSource {
 
 /** External media, as stored. The internal id is independent of the provider's. */
 export interface Song {
-  id: SongId;
-  provider: MediaProviderName;
-  providerMediaId: string;
-  title: string;
-  artist: string;
-  durationMs: number;
-  thumbnailUrl?: string;
-  createdAtIso: string;
+  readonly id: SongId;
+  readonly provider: MediaProviderName;
+  readonly providerMediaId: string;
+  readonly title: string;
+  readonly artist: string;
+  readonly durationMs: number;
+  readonly thumbnailUrl?: string;
+  readonly createdAtIso: string;
 }
 
 // ---------------------------------------------------------------- notes ----
@@ -80,14 +86,33 @@ export type NoteType = (typeof NOTE_TYPES)[number];
  * thing preventing that in the previous build was a convention in the
  * generator.
  */
-export interface Note {
-  id: string;
-  timeMs: number;
-  lane: Lane;
-  type: NoteType;
-  /** Required for `hold`, absent for `tap`. */
-  durationMs?: number;
+interface NoteBase {
+  readonly id: string;
+  readonly timeMs: number;
+  readonly lane: Lane;
 }
+
+export interface TapNote extends NoteBase {
+  readonly type: 'tap';
+  /** Never present. Stated so that a stray duration is a compile error. */
+  readonly durationMs?: undefined;
+}
+
+export interface HoldNote extends NoteBase {
+  readonly type: 'hold';
+  readonly durationMs: number;
+}
+
+/**
+ * A discriminated union rather than one optional field.
+ *
+ * "Required for hold, absent for tap" was true of the comment and of the
+ * runtime validator, and false of the type — so a tap carrying a duration, and
+ * a hold carrying none, both compiled. An invariant enforced only where the
+ * design says not to rely on it is an invariant waiting to be broken by
+ * something that never reaches the validator.
+ */
+export type Note = TapNote | HoldNote;
 
 // --------------------------------------------------------------- timing ----
 
@@ -102,9 +127,9 @@ export interface Note {
  * point re-align a drifting recording without moving everything before it.
  */
 export interface TimingPoint {
-  timeMs: number;
-  bpm: number;
-  beat: number;
+  readonly timeMs: number;
+  readonly bpm: number;
+  readonly beat: number;
 }
 
 /** At least one point, ordered by `timeMs`. The first should be the song's start. */
@@ -120,16 +145,26 @@ export type BeatmapStatus = (typeof BEATMAP_STATUSES)[number];
 
 /** Someone's playable interpretation of a song. Many per song. */
 export interface Beatmap {
-  id: BeatmapId;
-  songId: SongId;
-  authorId: UserId;
-  title?: string;
-  difficulty: Difficulty;
-  tags: readonly string[];
-  status: BeatmapStatus;
-  currentRevisionId?: RevisionId;
-  createdAtIso: string;
-  publishedAtIso?: string;
+  readonly id: BeatmapId;
+  readonly songId: SongId;
+  readonly authorId: UserId;
+  readonly title?: string;
+  readonly difficulty: Difficulty;
+  readonly tags: readonly string[];
+  readonly status: BeatmapStatus;
+  readonly currentRevisionId?: RevisionId;
+  readonly createdAtIso: string;
+  readonly publishedAtIso?: string;
+  /**
+   * Where this came from, if it is a fork. §17.
+   *
+   * Without it a fork is indistinguishable from an original: no attribution to
+   * whoever did the work, no lineage, and no way to answer "is this a copy of
+   * mine?" — which makes Fork look like theft rather than the sanctioned way
+   * to build on someone else's chart.
+   */
+  readonly forkedFromBeatmapId?: BeatmapId;
+  readonly forkedFromRevisionId?: RevisionId;
 }
 
 /**
@@ -144,15 +179,15 @@ export interface Beatmap {
  * published chart must not change with it (§8).
  */
 export interface ChartRevision {
-  id: RevisionId;
-  beatmapId: BeatmapId;
-  schemaVersion: number;
-  revision: number;
-  timing: TimingMap;
-  notes: readonly Note[];
-  generatorVersion?: string;
-  generatorSeed?: number;
-  createdAtIso: string;
+  readonly id: RevisionId;
+  readonly beatmapId: BeatmapId;
+  readonly schemaVersion: number;
+  readonly revision: number;
+  readonly timing: TimingMap;
+  readonly notes: readonly Note[];
+  readonly generatorVersion?: string;
+  readonly generatorSeed?: number;
+  readonly createdAtIso: string;
 }
 
 export const CHART_SCHEMA_VERSION = 2;
@@ -173,10 +208,30 @@ export interface PlayableChart {
 // ------------------------------------------------------- people and lists ----
 
 export interface User {
-  id: UserId;
-  displayName: string;
-  createdAtIso: string;
+  readonly id: UserId;
+  readonly displayName: string;
+  readonly createdAtIso: string;
 }
+
+/**
+ * Settings that belong to a person and their machine, not to a chart. §13, §29.
+ *
+ * `calibrationMs` is the second of the three offsets and the only one stored
+ * per player: it says whether this keyboard, display and browser feel early or
+ * late. It **never** modifies a published chart — that is the chart offset's
+ * job, and mixing the two is the mistake §13 exists to prevent.
+ */
+export interface UserPreferences {
+  readonly calibrationMs: number;
+  readonly scrollSpeed: number;
+  readonly volume: number;
+}
+
+export const DEFAULT_PREFERENCES: UserPreferences = {
+  calibrationMs: 0,
+  scrollSpeed: 1,
+  volume: 1,
+};
 
 /**
  * A saved beatmap is a REFERENCE, not a copy. System design §17.

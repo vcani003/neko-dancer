@@ -41,32 +41,57 @@ export type MediaState = (typeof MEDIA_STATES)[number];
  * unreadable and a chat log unciteable.
  */
 export interface RoomPlayer {
-  participantId: ParticipantId;
-  userId: UserId;
-  displayName: string;
-  ready: boolean;
-  finished: boolean;
-  media: MediaState;
+  readonly participantId: ParticipantId;
+  readonly userId: UserId;
+  readonly displayName: string;
+  readonly ready: boolean;
+  readonly finished: boolean;
+  readonly media: MediaState;
   /** Server-chosen wording. Absent unless `media` is `failed`. */
-  mediaError?: string;
-  progress: PlayerProgress;
+  readonly mediaError?: string;
+  /**
+   * Whether this player is in the round at all. §21, §26.
+   *
+   * §21 gates the start on "every **participating** player", and without this
+   * there is no such notion — so a player whose video will not load either
+   * blocks the room for ever or is silently ignored by ad-hoc logic in one
+   * place and not another. All three policies §26 leaves open (skip, spectate,
+   * drop from the ready requirement) are expressed by this one field.
+   */
+  readonly participating: boolean;
+  /**
+   * False while they are away and their seat is held.
+   *
+   * A disconnect and a departure are different events with different correct
+   * responses, and without this they are the same event.
+   */
+  readonly connected: boolean;
+  readonly progress: PlayerProgress;
 }
 
 export interface QueueItem {
-  beatmapId: BeatmapId;
-  revisionId: RevisionId;
-  title: string;
-  artist: string;
-  addedBy: string;
-  addedByUserId: UserId;
+  /**
+   * Identifies the ENTRY, not the beatmap.
+   *
+   * Nothing forbids queueing the same song twice, so keying removal on
+   * `beatmapId` makes "remove that one" ambiguous — and gives no way to check
+   * that the person removing it is the person who added it.
+   */
+  readonly queueItemId: string;
+  readonly beatmapId: BeatmapId;
+  readonly revisionId: RevisionId;
+  readonly title: string;
+  readonly artist: string;
+  readonly addedBy: string;
+  readonly addedByUserId: UserId;
 }
 
 export interface RoomState {
-  roomId: RoomId;
-  players: readonly RoomPlayer[];
-  queue: readonly QueueItem[];
-  activeRevisionId: RevisionId | null;
-  roundState: RoundState;
+  readonly roomId: RoomId;
+  readonly players: readonly RoomPlayer[];
+  readonly queue: readonly QueueItem[];
+  readonly activeRevisionId: RevisionId | null;
+  readonly roundState: RoundState;
 }
 
 // ------------------------------------------------------ client → server ----
@@ -77,7 +102,7 @@ export type ClientMessage =
   /** Text only. The server knows who sent it (§27). */
   | { type: 'chat'; text: string }
   | { type: 'queueAdd'; beatmapId: BeatmapId }
-  | { type: 'queueRemove'; beatmapId: BeatmapId }
+  | { type: 'queueRemove'; queueItemId: string }
   | { type: 'ready'; ready: boolean }
   /**
    * The answer to "can you play this?", tied to the revision it is about — so a
@@ -110,11 +135,24 @@ export type ServerMessage =
   | { type: 'welcome'; participantId: ParticipantId; userId: UserId }
   | { type: 'room'; room: RoomState }
   | { type: 'chat'; message: ChatMessage }
-  /** Fetch this revision and load its media; report back with `mediaResult`. */
-  | { type: 'roundPrepare'; revisionId: RevisionId }
+  /**
+   * Fetch this revision and load its media; report back with `mediaResult`.
+   * `deadlineInMs` is how long the room will wait before deciding for you —
+   * without it, one silent client leaves everybody in `preparing` for ever.
+   */
+  | { type: 'roundPrepare'; revisionId: RevisionId; deadlineInMs: number }
   /** ADR-002: a delay from receipt, not an instant on the server's clock. */
   | { type: 'roundStart'; revisionId: RevisionId; startInMs: number }
   | { type: 'roundEnd'; results: readonly RoundScore[] }
+  /**
+   * The round is not happening after all.
+   *
+   * Distinct from `roundEnd`, which reports scores. A countdown that everyone
+   * is watching has to be cancellable — the last able player leaving during it
+   * is the obvious case — and without this message their clients count down to
+   * a round that will never start.
+   */
+  | { type: 'roundAbort'; reason: string }
   | { type: 'error'; error: string };
 
 /**
@@ -126,20 +164,27 @@ export type ServerMessage =
  * server's own words.
  */
 export interface ChatMessage {
-  id: number;
-  text: string;
-  sentAtIso: string;
-  userId?: UserId;
-  displayName?: string;
-  system?: true;
+  readonly id: number;
+  readonly text: string;
+  readonly sentAtIso: string;
+  readonly userId?: UserId;
+  readonly displayName?: string;
+  readonly system?: true;
 }
 
 export interface RoundScore {
-  participantId: ParticipantId;
-  displayName: string;
-  rank: number;
-  result: RoundResult;
-  best: Judgment | null;
+  readonly participantId: ParticipantId;
+  readonly displayName: string;
+  readonly rank: number;
+  /**
+   * Null when they never reported one.
+   *
+   * Did-not-finish and failed-out are different outcomes and were previously
+   * conflated: `RoundResult.completed: false` means "health ran out", which is
+   * a run that happened. Someone whose browser closed produced no run at all.
+   */
+  readonly result: RoundResult | null;
+  readonly best: Judgment | null;
 }
 
 // ------------------------------------------------------------- helpers ----
@@ -147,5 +192,12 @@ export interface RoundScore {
 export type ClientMessageType = ClientMessage['type'];
 export type ServerMessageType = ServerMessage['type'];
 
-/** Narrow a union member by its tag, so handlers stay exhaustively checked. */
-export type Extract<M extends { type: string }, T extends M['type']> = M & { type: T };
+/**
+ * Narrow a union member by its tag, so handlers stay exhaustively checked.
+ *
+ * Named `MessageOfType` rather than `Extract` because this package re-exports
+ * everything through `index.ts`, and a type called `Extract` shadows the
+ * TypeScript built-in for every file that imports from it — a confusing thing
+ * to inflict on a consumer for the sake of four characters.
+ */
+export type MessageOfType<M extends { type: string }, T extends M['type']> = M & { type: T };

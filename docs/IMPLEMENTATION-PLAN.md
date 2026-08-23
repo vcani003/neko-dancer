@@ -232,9 +232,31 @@ imported by both sides, rather than two that must be tested against each other.
 
 ### Decided, and not deviations
 
-- **Judgment windows: keep `35/70/110/160`.** The spec's `45/90/140/180` was an
-  example, and §12 calls these provisional. The current values stay until
-  playtesting gives a reason to change them.
+### ADR-005 — Five judgment grades. **ACCEPTED**
+
+**Decision.** `PERFECT | GREAT | GOOD | OKAY | MISS`, at the current
+`35 / 70 / 110 / 160` thresholds, with `MISS` everything outside the `OKAY`
+window. Provisional and configurable; tuned by playtesting.
+
+```
+|error| ≤  35 → PERFECT      ≤ 110 → GOOD       > 160 → MISS
+        ≤  70 → GREAT        ≤ 160 → OKAY
+```
+
+Raised because the contracts shipped five grades (`PERFECT NICE OKAY OOPS
+MISS`) where §12's example listed four, and because Part 4's own test matrix
+demanded assertions that could not hold — it required `+120 → Okay` while
+`okayMs` was 110, so two of its four boundary tests were unwritable. A test
+matrix that contradicts the code it tests is worse than no matrix.
+
+**One consequence to watch in playtesting.** The tier now called `OKAY` is the
+one that breaks a combo — `PERFECT`, `GREAT` and `GOOD` keep it. A grade named
+"Okay" that punishes you reads oddly, and it is a naming question rather than a
+behaviour one: the thresholds and the combo rule are unchanged from what the
+game has always done. If it feels wrong in play, the cheap fixes are to let
+`OKAY` keep the combo, or to rename that tier again.
+
+### Decided, and not deviations
 - **Client-reported scores are accepted for MVP.** The server saves what the
   client claims. That is fine for casual multiplayer, and it means a future
   competitive leaderboard needs server-side validation before anyone calls it
@@ -372,8 +394,15 @@ fake.setTime(10_000);
 game.press('up');        // chart has { timeMs: 10_000, lane: 'up' } → Perfect
 ```
 
-with the window boundaries walked exactly: `+30 → Perfect`, `+70 → Good`,
-`+120 → Okay`, `+250 → Miss`, and each boundary tested on **both sides**.
+with the window boundaries walked exactly, per ADR-005, and each tested on
+**both sides** so a window cannot be moved by accident:
+
+```
+  0 → PERFECT     71 → GOOD      161 → MISS
+ 35 → PERFECT    110 → GOOD      250 → MISS
+ 36 → GREAT      111 → OKAY
+ 70 → GREAT      160 → OKAY
+```
 
 BPM estimation gets synthetic taps at a known tempo (`237, 737, 1237, 1737,
 2237` → 120 BPM, offset ≈ 237 ms), then the same with human noise

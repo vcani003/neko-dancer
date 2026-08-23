@@ -35,8 +35,31 @@ describe('GameEngine — judging a keypress', () => {
 
   it('grades a late press down the tiers', () => {
     const { engine, advance, wallNow } = setup([arrow('a', 1000)]);
+    // 90 ms late: past GREAT (70), inside GOOD (110). The same tier this
+    // asserted before BL-4 renamed it — `OKAY` now means the 160 ms band.
     advance(1090);
-    expect(engine.pressLane('left', wallNow())?.judgment).toBe('OKAY');
+    expect(engine.pressLane('left', wallNow())?.judgment).toBe('GOOD');
+  });
+
+  /**
+   * Every boundary, on both sides, so a window cannot be moved by accident.
+   *
+   * The grades are the most tuning-sensitive numbers in the project and the
+   * ones most likely to change; these are what make a change deliberate.
+   */
+  it.each([
+    [1000, 'PERFECT'],
+    [1035, 'PERFECT'],
+    [1036, 'GREAT'],
+    [1070, 'GREAT'],
+    [1071, 'GOOD'],
+    [1110, 'GOOD'],
+    [1111, 'OKAY'],
+    [1160, 'OKAY'],
+  ])('judges a press at %ims as %s', (atMs, expected) => {
+    const { engine, advance, wallNow } = setup([arrow('a', 1000)]);
+    advance(atMs);
+    expect(engine.pressLane('left', wallNow())?.judgment).toBe(expected);
   });
 
   it('reports early presses as negative delta', () => {

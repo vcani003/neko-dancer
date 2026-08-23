@@ -16,9 +16,9 @@ import type { Judgment } from './LaneJudge.ts';
  */
 export const BASE_POINTS: Record<Judgment, number> = {
   PERFECT: 7,
-  NICE: 5,
-  OKAY: 3,
-  OOPS: 1,
+  GREAT: 5,
+  GOOD: 3,
+  OKAY: 1,
   MISS: 0,
 };
 
@@ -51,9 +51,9 @@ export const MAX_HEALTH = 100;
  */
 export const HEALTH_DELTA: Record<Judgment, number> = {
   PERFECT: 2,
-  NICE: 1.5,
-  OKAY: 1,
-  OOPS: -2,
+  GREAT: 1.5,
+  GOOD: 1,
+  OKAY: -2,
   MISS: -6,
 };
 
@@ -81,7 +81,7 @@ export function initialScoreState(): ScoreState {
     maxCombo: 0,
     health: MAX_HEALTH,
     failed: false,
-    counts: { PERFECT: 0, NICE: 0, OKAY: 0, OOPS: 0, MISS: 0 },
+    counts: { PERFECT: 0, GREAT: 0, GOOD: 0, OKAY: 0, MISS: 0 },
     wrongKeys: 0,
     totalAbsDeltaMs: 0,
     totalDeltaMs: 0,
@@ -104,9 +104,9 @@ const clampHealth = (value: number): number => Math.min(MAX_HEALTH, Math.max(0, 
  */
 export const KEEPS_COMBO: Record<Judgment, boolean> = {
   PERFECT: true,
-  NICE: true,
-  OKAY: true,
-  OOPS: false,
+  GREAT: true,
+  GOOD: true,
+  OKAY: false,
   MISS: false,
 };
 

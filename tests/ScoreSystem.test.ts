@@ -27,7 +27,7 @@ describe('scoring', () => {
   });
 
   it('pays a descending ladder below Perfect', () => {
-    const points = (['PERFECT', 'NICE', 'OKAY', 'OOPS', 'MISS'] as Judgment[])
+    const points = (['PERFECT', 'GREAT', 'GOOD', 'OKAY', 'MISS'] as Judgment[])
       .map((j) => BASE_POINTS[j]);
     for (let i = 1; i < points.length; i++) {
       expect(points[i]).toBeLessThan(points[i - 1]);
@@ -51,8 +51,8 @@ describe('scoring', () => {
 
 describe('combo', () => {
   it('survives Okay but not Oops', () => {
-    expect(play([['PERFECT', 0], ['OKAY', 100]]).combo).toBe(2);
-    expect(play([['PERFECT', 0], ['OOPS', 150]]).combo).toBe(0);
+    expect(play([['PERFECT', 0], ['GOOD', 100]]).combo).toBe(2);
+    expect(play([['PERFECT', 0], ['OKAY', 150]]).combo).toBe(0);
   });
 
   it('breaks on a miss and remembers the best run', () => {
@@ -134,12 +134,12 @@ describe('accuracy and timing', () => {
   it('weights each judgment by what it was worth', () => {
     expect(accuracy(play([['PERFECT', 0]]))).toBeCloseTo(1);
     expect(accuracy(play([['MISS', 0]]))).toBeCloseTo(0);
-    expect(accuracy(play([['NICE', 0]]))).toBeCloseTo(5 / 7);
+    expect(accuracy(play([['GREAT', 0]]))).toBeCloseTo(5 / 7);
   });
 
   it('reports which way the player is off', () => {
-    expect(meanDeltaMs(play([['NICE', 50], ['NICE', 70]]))).toBeCloseTo(60);
-    expect(meanDeltaMs(play([['NICE', -40]]))).toBeCloseTo(-40);
+    expect(meanDeltaMs(play([['GREAT', 50], ['GREAT', 70]]))).toBeCloseTo(60);
+    expect(meanDeltaMs(play([['GREAT', -40]]))).toBeCloseTo(-40);
   });
 
   it('has no timing opinion when nothing was hit', () => {
@@ -152,13 +152,13 @@ describe('grades and calibration — "why did I get a D"', () => {
    * A real run: 53 arrows, 47 of them hit, and a D. The player hit 89% of the
    * arrows and scored 62% accuracy, because accuracy weights HOW CLOSE each
    * hit was — and a systematic 43 ms early bias pushed most of them out of
-   * PERFECT and into NICE.
+   * PERFECT and into GREAT.
    */
   const realRun = () => {
     let state = initialScoreState();
     for (let i = 0; i < 10; i++) state = applyJudgment(state, 'PERFECT', -20);
-    for (let i = 0; i < 25; i++) state = applyJudgment(state, 'NICE', -50);
-    for (let i = 0; i < 12; i++) state = applyJudgment(state, 'OKAY', -80);
+    for (let i = 0; i < 25; i++) state = applyJudgment(state, 'GREAT', -50);
+    for (let i = 0; i < 12; i++) state = applyJudgment(state, 'GOOD', -80);
     for (let i = 0; i < 6; i++) state = applyJudgment(state, 'MISS', 0);
     return state;
   };
@@ -195,11 +195,11 @@ describe('grades and calibration — "why did I get a D"', () => {
 
   /** And the correction has to actually move the grade, or it is theatre. */
   it('turns the same playing into a much better grade once centred', () => {
-    // The same run with the bias removed: those NICE hits were 50 ms out, and
+    // The same run with the bias removed: those GREAT hits were 50 ms out, and
     // 50 ms of that was a clock disagreement rather than the player.
     let centred = initialScoreState();
     for (let i = 0; i < 35; i++) centred = applyJudgment(centred, 'PERFECT', 1);
-    for (let i = 0; i < 12; i++) centred = applyJudgment(centred, 'NICE', 30);
+    for (let i = 0; i < 12; i++) centred = applyJudgment(centred, 'GREAT', 30);
     for (let i = 0; i < 6; i++) centred = applyJudgment(centred, 'MISS', 0);
 
     expect(accuracy(centred)).toBeGreaterThan(accuracy(realRun()));
@@ -207,12 +207,12 @@ describe('grades and calibration — "why did I get a D"', () => {
   });
 
   it('offers the opposite for a consistently late player', () => {
-    const late = play(Array(20).fill(['NICE', 45]));
+    const late = play(Array(20).fill(['GREAT', 45]));
     expect(suggestedOffsetMs(late, 0)).toBe(-45);
   });
 
   it('adjusts relative to an offset already in use', () => {
-    const state = play(Array(20).fill(['NICE', 30]));
+    const state = play(Array(20).fill(['GREAT', 30]));
     expect(suggestedOffsetMs(state, 20)).toBe(-10);
   });
 
@@ -221,6 +221,6 @@ describe('grades and calibration — "why did I get a D"', () => {
   });
 
   it('suggests nothing from too few hits to be sure', () => {
-    expect(suggestedOffsetMs(play([['NICE', 60], ['NICE', 60]]), 0)).toBeNull();
+    expect(suggestedOffsetMs(play([['GREAT', 60], ['GREAT', 60]]), 0)).toBeNull();
   });
 });

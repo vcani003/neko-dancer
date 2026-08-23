@@ -7,29 +7,52 @@
  * to decide what a press means.
  */
 
-export const JUDGMENTS = ['PERFECT', 'NICE', 'OKAY', 'OOPS', 'MISS'] as const;
+/**
+ * Five grades, best to worst. Decided in BL-4.
+ *
+ * The system design's example listed four (`perfect/good/okay/miss`); five is
+ * the decision. The extra tier is what lets a hit be *late but not lost* — the
+ * band between "still counts" and "gone" is where most of a rhythm game's feel
+ * lives.
+ */
+export const JUDGMENTS = ['PERFECT', 'GREAT', 'GOOD', 'OKAY', 'MISS'] as const;
 export type Judgment = (typeof JUDGMENTS)[number];
 
+/**
+ * The outer edge of each grade, in milliseconds either side of the note.
+ *
+ * `MISS` has no window: it is what a press outside `okayMs` is, and what an
+ * unpressed note becomes once it has gone by.
+ */
 export interface JudgmentWindows {
   perfectMs: number;
-  niceMs: number;
+  greatMs: number;
+  goodMs: number;
   okayMs: number;
-  oopsMs: number;
 }
 
 /**
- * Provisional, and known to be. System design §12.
+ * Provisional, and known to be. System design §12, BL-4.
  *
- * The spec's example was 45/90/140/180; these are the values the game currently
- * plays at and they are kept until playtesting gives a reason to move them.
- * Recorded as a decision rather than left as an accident, because a number that
- * nobody chose is a number nobody will dare change.
+ *     |error| ≤  35  →  PERFECT
+ *              ≤  70  →  GREAT
+ *              ≤ 110  →  GOOD
+ *              ≤ 160  →  OKAY
+ *               > 160  →  MISS
+ *
+ * The spec's example was 45/90/140/180; these are the values the game plays at
+ * and they stay until playtesting gives a reason to move them. Recorded as a
+ * decision rather than left as an accident, because a number nobody chose is a
+ * number nobody will dare change.
+ *
+ * Configurable on purpose: these are the most tuning-sensitive numbers in the
+ * project and the ones most likely to be wrong.
  */
 export const DEFAULT_WINDOWS: JudgmentWindows = {
   perfectMs: 35,
-  niceMs: 70,
-  okayMs: 110,
-  oopsMs: 160,
+  greatMs: 70,
+  goodMs: 110,
+  okayMs: 160,
 };
 
 /**
