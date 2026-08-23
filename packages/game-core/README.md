@@ -1,9 +1,16 @@
 # @neko/game-core
 
-**Empty until Phase 1.** The rhythm engine moves here: `GameClock`,
-`LaneJudge`, `ScoreSystem`, `GameEngine`, `ChartRecorder`, `SongPlan` and the
-analysis pipeline — currently at `src/engine/`, `src/charts/` and
-`src/analysis/`, and already free of React, YouTube, sockets and the database.
+**Built in Phase 1.** `MediaClock`, `judge`, note bookkeeping, `ScoreSystem`,
+`GameEngine` and `fitTempo`. The surface is fixed by `API.md`, which is the
+contract; this file is orientation.
+
+`SongPlan`, chart generation and the analysis pipeline are **not** here and are
+not coming — they are authoring rather than gameplay, and they move in Phase 5
+(API.md §6). An earlier version of this file said otherwise.
+
+The originals under `src/engine/` and `src/charts/` are still in place and still
+passing, because the prototype has to keep running until `apps/web` is wired up.
+They are deleted then, not now.
 
 That independence is the reason 256 tests run with no browser, and it is a
 property to be **enforced rather than trusted**: Phase 1's gate includes a test

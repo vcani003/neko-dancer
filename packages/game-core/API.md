@@ -41,6 +41,21 @@ is **fed** samples rather than pulling them.
 export interface MediaClockOptions {
   /** Beyond this much disagreement, stop correcting and jump. Default 250. */
   resyncThresholdMs?: number;
+  /**
+   * How long a source may report the same time before the clock stops.
+   * Default 750, and it must stay comfortably above the source's coarsest step.
+   *
+   * **Amended after Phase 1.** The original document asked for two things that
+   * could not both be built: "time advances between samples, it does not
+   * freeze" and "a source that stalls must stop the clock". Those are only
+   * reconcilable by distinguishing *no samples yet* from *samples that are not
+   * moving* — and a stalled video and a coarse one that has not ticked are the
+   * same observation until enough time has passed. That distinction needs a
+   * timeout, which the document did not provide.
+   */
+  stallTimeoutMs?: number;
+  slewRate?: number;
+  slewDeadbandMs?: number;
 }
 
 export class MediaClock {
@@ -63,8 +78,14 @@ losing it would be a regression:
 - Between samples, time advances with wall time. It does not freeze.
 - Persistent bias is corrected by **minimum drift**, not mean drift. A coarsely
   quantised source makes mean drift invent lag that is not there.
-- A disagreement beyond `resyncThresholdMs` is a seek, not drift: jump, do not
-  slew.
+- A seek is **direction-aware**, and this was wrong in the original document.
+  A quantised source is a *lower bound* on where the music is, so running ahead
+  of it by up to one step is not disagreement — it is the expected state
+  between ticks. A symmetric rule made the clock jump back a step just before
+  each tick and forward again after: sawtoothing by a quarter-second while
+  tracking a perfectly healthy video, and finishing 158 ms behind it. A seek is
+  therefore a *forward* leap beyond the threshold, or a source reading that
+  **decreases** — which playback never does at any coarseness.
 - A source that stalls must stop the clock, not let it run on. Notes must not
   silently expire against a video that has stopped.
 
@@ -95,6 +116,14 @@ export interface EngineOptions {
    * early sets `+50`, which moves their presses later and lands them on the
    * note. It never touches the chart, and the chart's timing map never
    * reaches this class at all — note times are already absolute (ADR-003).
+   *
+   * **Amended after Phase 1: it applies to `update` as well as `press`.**
+   * Applied to presses alone, a consistently-late player with `-50` is
+   * stranded — their press at raw 10 200 judges as 10 150 and would be OKAY,
+   * but the note expired at raw 10 160 and is already gone. Calibration shifts
+   * the *player's whole timeline*, and expiry is a deadline measured against
+   * that timeline. Rendering deliberately stays on raw media time, because the
+   * player should see the note where the video puts it.
    */
   calibrationMs?: number;
 }
@@ -103,7 +132,8 @@ export interface PressResult {
   judgment: Judgment;
   /** Signed: negative early, positive late. After calibration. */
   deltaMs: number;
-  noteId: string | null;              // null when nothing was in range
+  /** Never null — a press with nothing in range returns no PressResult at all. */
+  noteId: string;
 }
 
 export class GameEngine {
@@ -141,6 +171,18 @@ export class GameEngine {
 - **One press claims at most one note**, the nearest unjudged one in that lane
   within `okayMs`. A press with nothing in range returns `null` and is not a
   miss — mashing an empty lane costs nothing but wastes the press.
+
+  The old engine charged −3 health and broke the combo for a press with nothing
+  in range, and this document removed that without arguing for it. **Measured
+  before accepting the removal**: pressing all four lanes every 20 ms for a
+  40-note chart scores 40 × `OKAY`, 14% accuracy, 85 points. Mashing is not an
+  auto-play exploit, because the earliest press inside the window claims the
+  note and a note is judged once — so mashing *guarantees the worst passing
+  grade*, which is a better deterrent than a health penalty and needs no rule.
+
+  What it does still guarantee is **survival**: a masher never fails. Whether
+  that matters is a game-design call rather than a correctness one, and it is
+  open — see the note in `IMPLEMENTATION-PLAN.md`.
 - **A note is judged once.** Never re-judged, never un-judged.
 - **The engine walks forward.** It never looks back at a note it has passed,
   which is why note order is validated upstream.
@@ -158,7 +200,7 @@ A `HoldNote` is judged twice: its **start**, exactly like a tap, and its
 Anything cleverer — re-grabbing a dropped hold, partial credit curves — is
 Phase 8. Say so in a comment rather than building it.
 
-## 5. Tempo estimation — moved, not rewritten
+## 5. Tempo estimation — **rewritten**, and the original instruction was wrong
 
 ```ts
 export interface TempoFit { bpm: number; firstBeatMs: number; confidence: number }
@@ -167,9 +209,47 @@ export interface TempoFit { bpm: number; firstBeatMs: number; confidence: number
 export function fitTempo(tapTimesMs: readonly number[]): TempoFit | null;
 ```
 
-The existing implementation stands. It must satisfy the Part 4 fixtures:
-`[237, 737, 1237, 1737, 2237]` → 120 BPM, offset ≈ 237 ms; the same with human
-noise; and the same with a deliberate outlier.
+This section originally said "the existing implementation stands". It could
+not: the old fit was a least squares over **array positions**, and positions are
+not beats. A doubled tap renumbers every beat after it, a missed beat renumbers
+them the other way, and a late tap drags the slope. Measured against the Part 4
+fixtures it produced 156, 111.6, 92.3 and 43.0 BPM — so the document demanded
+outlier robustness from an implementation structurally incapable of it.
+
+The replacement takes the **median gap** as the period, assigns each tap a beat
+number by rounding, re-centres the phase on the **median offset** so a wildly
+early first tap cannot throw every other tap off the grid, discards taps more
+than a quarter-beat off it, and only then fits least squares over `(beat,
+time)`. All five Part 4 fixtures land on 120.000 BPM / 237 ms.
+
+```ts
+export interface TempoFit {
+  bpm: number;
+  firstBeatMs: number;
+  /** Agreement × coverage: how well the used taps fit, scaled by how many were usable. */
+  confidence: number;
+  /** Kept because a measured millisecond figure is actionable in a way a 0–1 score is not. */
+  residualMs: number;
+  usedTaps: number;
+  totalTaps: number;
+}
+```
+
+## 5b. Types this document named and failed to define
+
+`ExpiredNote`, `ActiveNote` and `EngineState` were referenced in signatures and
+never declared — an Architecture bug, and the most likely place an
+implementation would have diverged from intent. They now live in
+`src/GameEngine.ts` and `src/notes.ts`, and **those declarations are ratified as
+the contract.** Notable in them:
+
+- `ExpiredNote.judgment` is always `MISS`, named rather than implied so a
+  renderer can feed an expiry and a judged press through one code path.
+- `EngineState` extends `PlayerProgress` from `@neko/protocol`, so the shape
+  broadcast to a room is a subset of the shape the engine already keeps.
+- `wrongKeys`, `holdsDropped`, `meanDeltaMs` are engine-local. `meanDeltaMs` is
+  what makes an offset suggestion possible: signed mean error is the number to
+  hand a player who keeps hitting early.
 
 ## 6. Not in this package
 

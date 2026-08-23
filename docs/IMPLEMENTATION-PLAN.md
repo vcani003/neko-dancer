@@ -304,6 +304,23 @@ Phase 1.
 
 </details>
 
+### Open — a game-design call, not a correctness one
+
+**A masher cannot fail.** The old engine charged −3 health for a press with
+nothing in range; `API.md` dropped that, and the drop was measured rather than
+assumed: pressing all four lanes every 20 ms through a 40-note chart yields 40 ×
+`OKAY`, 14% accuracy, 85 points. So mashing is not an auto-play exploit — the
+earliest press in the window claims the note, a note is judged once, and the
+result is the worst passing grade available.
+
+But the run *completes*. In a multiplayer round where finishing is the bar,
+mashing guarantees clearing the song badly rather than failing it. Restoring a
+small health penalty for an unmatched press would close that; leaving it open
+means a beginner flailing at a hard chart still gets to the end.
+
+Worth deciding at playtesting, alongside the `OKAY`-breaks-combo oddity from
+ADR-005, rather than now.
+
 ### Decided, and not deviations
 
 ### ADR-005 — Five judgment grades. **ACCEPTED**
@@ -403,6 +420,23 @@ That is the prototype's, it is transitional, and it goes when the code moves in
 Phase 1.
 
 </details>
+
+### Open — a game-design call, not a correctness one
+
+**A masher cannot fail.** The old engine charged −3 health for a press with
+nothing in range; `API.md` dropped that, and the drop was measured rather than
+assumed: pressing all four lanes every 20 ms through a 40-note chart yields 40 ×
+`OKAY`, 14% accuracy, 85 points. So mashing is not an auto-play exploit — the
+earliest press in the window claims the note, a note is judged once, and the
+result is the worst passing grade available.
+
+But the run *completes*. In a multiplayer round where finishing is the bar,
+mashing guarantees clearing the song badly rather than failing it. Restoring a
+small health penalty for an unmatched press would close that; leaving it open
+means a beginner flailing at a hard chart still gets to the end.
+
+Worth deciding at playtesting, alongside the `OKAY`-breaks-combo oddity from
+ADR-005, rather than now.
 
 ### Decided, and not deviations
 - **Client-reported scores are accepted for MVP.** The server saves what the
