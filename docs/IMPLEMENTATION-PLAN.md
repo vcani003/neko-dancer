@@ -194,6 +194,42 @@ revision — which §6 already requires, since published revisions are immutable
 
 </details>
 
+### ADR-004 — Four workspaces, npm, one lockfile. **ACCEPTED**
+
+**Decision.** One Git repository, npm workspaces, exactly four workspaces:
+
+```
+neko-dancer/
+├── apps/web/            React + TS client · UI · chart creation · playback
+│                        adapters · input · multiplayer client state
+├── apps/server/         API · auth · Postgres/Supabase · rooms · chat ·
+│                        queues · ready state · WebSocket server
+├── packages/game-core/  timing · judgment · scoring · combo · playback
+│                        calculations · provider-independent BPM utilities
+├── packages/protocol/   shared domain contracts · WS message types · room
+│                        schemas · identifiers · validation identical on both
+│                        sides
+└── package.json         one root lockfile; install from the root
+```
+
+Everything else stays a folder **inside** one of the four. Explicitly **not**
+separate workspaces: playback, auth, database, chart editor, UI components,
+rooms, testing, utilities. A fifth workspace needs its own ADR.
+
+Agents are assigned ownership **by workspace** and do not modify another one
+without a documented dependency reason.
+
+npm stays the package manager; changing it is a separate tooling decision.
+
+**This supersedes the five-package sketch in Part 2 below**, which had a
+separate `contracts` and `playback`. `contracts` is renamed `protocol`;
+`playback` folds into `apps/web`.
+
+**One consequence worth naming.** `apps/server` becomes TypeScript, so it can
+import `packages/protocol` directly — which dissolves the validator-drift
+problem the previous plan had to work around. There is now one validator,
+imported by both sides, rather than two that must be tested against each other.
+
 ### Decided, and not deviations
 
 - **Judgment windows: keep `35/70/110/160`.** The spec's `45/90/140/180` was an
@@ -213,27 +249,19 @@ revision — which §6 already requires, since published revisions are immutable
 
 ### Packages
 
-```
-packages/
-  contracts/     domain types · chart schema · WS protocol · judgments
-  game-core/     timing · scoring · notes · BPM        (no React/YT/WS/db)
-  playback/      MediaProvider · PlaybackAdapter · YouTubeAdapter
-apps/
-  client/        React · Vite · routing · UI · realtime client
-  server/        Fastify · WS · rooms · repositories
-db/              Drizzle schema · migrations
-```
+Superseded by ADR-004. The layout is the four workspaces above; `db/` (Drizzle
+schema and migrations) is a folder inside `apps/server`.
 
 ### Agents and their boundaries
 
 | Agent | Owns | Must not touch |
 |---|---|---|
-| **Architecture** | `packages/contracts`, ADRs, protocol | Implementation, unless a contract forces it |
+| **Architecture** | `packages/protocol`, ADRs | Implementation, unless a contract forces it |
 | **Game Core** | `packages/game-core` | UI, server, database |
-| **Playback** | `packages/playback` | Game Core logic |
-| **Data** | `db/`, repositories, auth | Gameplay |
-| **Realtime** | Rooms, queue, chat, ready, round state | Scoring |
-| **Client** | `apps/client` UI and state | Core algorithms |
+| **Playback** | `apps/web/src/playback` | Game Core logic |
+| **Data** | `apps/server/src/db`, repositories, auth | Gameplay |
+| **Realtime** | `apps/server/src/rooms` — queue, chat, ready, round | Scoring |
+| **Client** | `apps/web` UI and state | Core algorithms |
 | **Validation** | All tests, adversarial cases, acceptance gates | Production behaviour, to make a test pass |
 | **Review** | Integration review | Feature implementation |
 

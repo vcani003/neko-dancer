@@ -10,7 +10,8 @@
     "serve": "node server/index.mjs",
     "lint": "oxlint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck:protocol": "tsc -p packages/protocol/tsconfig.json --noEmit"
   },
   "dependencies": {
     "pixi.js": "^8.20.0",
@@ -28,5 +29,9 @@
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
     "vitest": "^3.2.4"
-  }
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
 }
