@@ -263,7 +263,15 @@ through a fake adapter — a test just passes 10_000. It also makes Phase 1's
 import-graph gate trivial to enforce: there is nothing playback-shaped to
 import.
 
-### ADR-008 — Chart schema v1 is abandoned. **ACCEPTED, with one caveat**
+### ADR-008 — Chart schema v1 is abandoned. **ACCEPTED — caveat resolved**
+
+**Resolved.** Vero exported the existing v1 charts from `localStorage` and has
+them saved outside the application. No general v1 → v2 migration hook is
+needed; the backup will be reshaped into `Song`/`Beatmap`/`ChartRevision` once,
+by hand, when there is somewhere to put it. The original decision and its
+reasoning follow.
+
+<details><summary>The decision as taken</summary>
 
 **Decision.** `CHART_SCHEMA_VERSION` is 2, v1 is not migrated, and
 `validateChartRevision`'s hard rejection of v1 is intentional. A ground-up
@@ -293,6 +301,8 @@ already absolute (ADR-003), so it is a reshape into `Song`/`Beatmap`/
 `src/charts/schema.ts` still exports a conflicting `CHART_SCHEMA_VERSION = 1`.
 That is the prototype's, it is transitional, and it goes when the code moves in
 Phase 1.
+
+</details>
 
 ### Decided, and not deviations
 
@@ -353,7 +363,15 @@ through a fake adapter — a test just passes 10_000. It also makes Phase 1's
 import-graph gate trivial to enforce: there is nothing playback-shaped to
 import.
 
-### ADR-008 — Chart schema v1 is abandoned. **ACCEPTED, with one caveat**
+### ADR-008 — Chart schema v1 is abandoned. **ACCEPTED — caveat resolved**
+
+**Resolved.** Vero exported the existing v1 charts from `localStorage` and has
+them saved outside the application. No general v1 → v2 migration hook is
+needed; the backup will be reshaped into `Song`/`Beatmap`/`ChartRevision` once,
+by hand, when there is somewhere to put it. The original decision and its
+reasoning follow.
+
+<details><summary>The decision as taken</summary>
 
 **Decision.** `CHART_SCHEMA_VERSION` is 2, v1 is not migrated, and
 `validateChartRevision`'s hard rejection of v1 is intentional. A ground-up
@@ -383,6 +401,8 @@ already absolute (ADR-003), so it is a reshape into `Song`/`Beatmap`/
 `src/charts/schema.ts` still exports a conflicting `CHART_SCHEMA_VERSION = 1`.
 That is the prototype's, it is transitional, and it goes when the code moves in
 Phase 1.
+
+</details>
 
 ### Decided, and not deviations
 - **Client-reported scores are accepted for MVP.** The server saves what the
