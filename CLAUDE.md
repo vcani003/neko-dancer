@@ -6,13 +6,20 @@ A recreation of **Nekodancer** (Atelier 801), which is deprecated. Faithful to
 the original's design; the code and the cat art are original. Browser rhythm
 game, LAN multiplayer, private repository.
 
-- **Docs**: `docs/ARCHITECTURE.md` (what the pieces are and why) ·
-  `docs/ENGINEERING.md` (house rules, loaded above) · `docs/SECURITY.md` (the
-  hostile case) · `docs/PLAYTEST-FINDINGS.md` (what broke, and the pattern in it)
-- **State**: engine, scoring, chart authoring, PixiJS renderer and LAN
-  multiplayer all work. Chart identity and versioning done. **In progress:** the
-  server-owned chart library — server as shared database, private until shared,
-  owner-token deletion.
+- **Docs, in reading order**: `docs/SYSTEM-DESIGN.md` is **the contract** —
+  the what and why, and the authority. `docs/IMPLEMENTATION-PLAN.md` is the who,
+  where and how we prove it. Then `docs/ENGINEERING.md` (house rules, loaded
+  above), `docs/SECURITY.md` (the hostile case), `docs/PLAYTEST-FINDINGS.md`
+  (what broke and the pattern in it). `docs/ARCHITECTURE.md` describes the
+  CURRENT build and is being superseded by the system design.
+- **State**: **architecture-changing feature work is frozen** (system design
+  §31.1). The prototype works end to end — engine, scoring, chart authoring,
+  PixiJS renderer, LAN multiplayer, lobby video preflight — and is now being
+  rebuilt against the domain model `Song → Beatmap → ChartRevision`, with
+  Postgres as the source of truth and real accounts instead of browser tokens.
+- **Three open decisions** blocking Phase 0, in `IMPLEMENTATION-PLAN.md` Part 1:
+  lane identity (direction vs key), round start (duration vs timestamp), and
+  whether a chart offset is ever added to a note time.
 - **Stack**: React 19 · TypeScript 6 · Vite 8 · PixiJS 8 · `ws` · Vitest 3.
   The server is plain `.mjs` on purpose — no build step, nothing to go stale,
   at the cost of not being able to import the TypeScript validator.
