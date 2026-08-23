@@ -15,3 +15,8 @@ public/audio/
 # text must not be swept into the host's repository by `git add -A`, and git
 # history is permanent.
 charts/
+
+# Mutation-testing scratch. Validation copies src/ here, breaks it on purpose to
+# prove its tests actually catch the defect, then deletes it. Transient by
+# design — it was committed once by a test run that raced the agent creating it.
+**/tests/.mutation/
