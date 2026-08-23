@@ -230,6 +230,70 @@ import `packages/protocol` directly — which dissolves the validator-drift
 problem the previous plan had to work around. There is now one validator,
 imported by both sides, rather than two that must be tested against each other.
 
+### ADR-006 — `MediaSource` has no id of its own. **ACCEPTED**
+
+**Decision.** Persistent identity belongs to `Song.id`. `MediaSource` is a
+**provider-facing playback descriptor**, identified by
+`provider + providerMediaId`, and carries no id.
+
+§11 lists `MediaSource { id; ... }`. Giving it one would create a second
+identity for the same media — a provider-shaped id alongside the database id —
+and every subsequent question ("which one does a beatmap point at?", "what
+happens when they disagree?") has no good answer.
+
+Recorded as an ADR rather than a code comment because the plan's own rule of the
+road is that a contract change goes through Architecture. A justification in a
+comment is a change nobody agreed to.
+
+### ADR-007 — `PlaybackAdapter` stays in `apps/web`; Game Core takes a number. **ACCEPTED**
+
+**Decision.** The `PlaybackAdapter` interface lives in `apps/web`. Game Core
+**never imports it**. Game Core consumes `mediaTimeMs` — a number — and nothing
+else about playback.
+
+This resolves a tension the previous plan could not: §11 says Game Core must not
+depend on YouTube, ADR-004 puts playback in `apps/web`, and
+`packages/game-core` may not import from an app. The interface therefore had
+nowhere to live.
+
+The resolution is better than the problem. An engine that takes a *number*
+rather than an *object with a `currentTimeMs()` method* cannot accidentally
+call `play()`, cannot hold a reference to a player, and cannot be tested only
+through a fake adapter — a test just passes 10_000. It also makes Phase 1's
+import-graph gate trivial to enforce: there is nothing playback-shaped to
+import.
+
+### ADR-008 — Chart schema v1 is abandoned. **ACCEPTED, with one caveat**
+
+**Decision.** `CHART_SCHEMA_VERSION` is 2, v1 is not migrated, and
+`validateChartRevision`'s hard rejection of v1 is intentional. A ground-up
+rewrite does not owe its prototype a migration path.
+
+**The caveat, and it is not rhetorical.** The condition was "unless there are
+existing charts worth preserving," and **that question cannot be answered from
+inside this repository.** Every chart made so far lives in the `localStorage` of
+whichever browser tapped it; the server has never stored one. Any beatmap
+someone spent an evening on exists in exactly one browser profile and nowhere
+else, and replacing the storage layer will not migrate it because there is
+nothing to migrate it from.
+
+So: **anything worth keeping must be exported before Phase 3 lands**, from the
+browser that made it. In its console:
+
+```js
+copy(JSON.stringify(Object.fromEntries(
+  Object.entries(localStorage).filter(([k]) => k.startsWith('neko.chart'))
+)))
+```
+
+Charts recovered that way are v1 and will need converting by hand — notes are
+already absolute (ADR-003), so it is a reshape into `Song`/`Beatmap`/
+`ChartRevision` rather than a re-tap.
+
+`src/charts/schema.ts` still exports a conflicting `CHART_SCHEMA_VERSION = 1`.
+That is the prototype's, it is transitional, and it goes when the code moves in
+Phase 1.
+
 ### Decided, and not deviations
 
 ### ADR-005 — Five judgment grades. **ACCEPTED**
@@ -255,6 +319,70 @@ one that breaks a combo — `PERFECT`, `GREAT` and `GOOD` keep it. A grade named
 behaviour one: the thresholds and the combo rule are unchanged from what the
 game has always done. If it feels wrong in play, the cheap fixes are to let
 `OKAY` keep the combo, or to rename that tier again.
+
+### ADR-006 — `MediaSource` has no id of its own. **ACCEPTED**
+
+**Decision.** Persistent identity belongs to `Song.id`. `MediaSource` is a
+**provider-facing playback descriptor**, identified by
+`provider + providerMediaId`, and carries no id.
+
+§11 lists `MediaSource { id; ... }`. Giving it one would create a second
+identity for the same media — a provider-shaped id alongside the database id —
+and every subsequent question ("which one does a beatmap point at?", "what
+happens when they disagree?") has no good answer.
+
+Recorded as an ADR rather than a code comment because the plan's own rule of the
+road is that a contract change goes through Architecture. A justification in a
+comment is a change nobody agreed to.
+
+### ADR-007 — `PlaybackAdapter` stays in `apps/web`; Game Core takes a number. **ACCEPTED**
+
+**Decision.** The `PlaybackAdapter` interface lives in `apps/web`. Game Core
+**never imports it**. Game Core consumes `mediaTimeMs` — a number — and nothing
+else about playback.
+
+This resolves a tension the previous plan could not: §11 says Game Core must not
+depend on YouTube, ADR-004 puts playback in `apps/web`, and
+`packages/game-core` may not import from an app. The interface therefore had
+nowhere to live.
+
+The resolution is better than the problem. An engine that takes a *number*
+rather than an *object with a `currentTimeMs()` method* cannot accidentally
+call `play()`, cannot hold a reference to a player, and cannot be tested only
+through a fake adapter — a test just passes 10_000. It also makes Phase 1's
+import-graph gate trivial to enforce: there is nothing playback-shaped to
+import.
+
+### ADR-008 — Chart schema v1 is abandoned. **ACCEPTED, with one caveat**
+
+**Decision.** `CHART_SCHEMA_VERSION` is 2, v1 is not migrated, and
+`validateChartRevision`'s hard rejection of v1 is intentional. A ground-up
+rewrite does not owe its prototype a migration path.
+
+**The caveat, and it is not rhetorical.** The condition was "unless there are
+existing charts worth preserving," and **that question cannot be answered from
+inside this repository.** Every chart made so far lives in the `localStorage` of
+whichever browser tapped it; the server has never stored one. Any beatmap
+someone spent an evening on exists in exactly one browser profile and nowhere
+else, and replacing the storage layer will not migrate it because there is
+nothing to migrate it from.
+
+So: **anything worth keeping must be exported before Phase 3 lands**, from the
+browser that made it. In its console:
+
+```js
+copy(JSON.stringify(Object.fromEntries(
+  Object.entries(localStorage).filter(([k]) => k.startsWith('neko.chart'))
+)))
+```
+
+Charts recovered that way are v1 and will need converting by hand — notes are
+already absolute (ADR-003), so it is a reshape into `Song`/`Beatmap`/
+`ChartRevision` rather than a re-tap.
+
+`src/charts/schema.ts` still exports a conflicting `CHART_SCHEMA_VERSION = 1`.
+That is the prototype's, it is transitional, and it goes when the code moves in
+Phase 1.
 
 ### Decided, and not deviations
 - **Client-reported scores are accepted for MVP.** The server saves what the

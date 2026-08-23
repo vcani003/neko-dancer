@@ -36,9 +36,12 @@ export type MediaProviderName = (typeof MEDIA_PROVIDERS)[number];
  * What a provider hands back when asked to resolve a link. System design §11.
  *
  * Deliberately not a `Song`: this is what the provider knows, before anything
- * has been stored. `bpmHint` is a *suggestion* and never authoritative — an
- * external BPM does not say where beat one falls, which is the half that
- * actually matters for a chart.
+ * has been stored, and it carries **no id of its own** — ADR-006. Persistent
+ * identity is `Song.id`; this is identified by `provider + providerMediaId`.
+ * Two identities for one piece of media is a question with no good answer.
+ *
+ * `bpmHint` is a *suggestion* and never authoritative — an external BPM does
+ * not say where beat one falls, which is the half that actually matters.
  */
 export interface MediaSource {
   provider: MediaProviderName;

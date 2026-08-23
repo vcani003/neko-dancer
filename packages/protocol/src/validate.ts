@@ -299,6 +299,10 @@ export function validateChartRevision(input: unknown): Validated<ChartRevision> 
   if (!id) errors.push('`id` must be a uuid.');
   if (!beatmapId) errors.push('`beatmapId` must be a uuid.');
 
+  // A hard rejection, on purpose. ADR-008 abandons v1 rather than migrating it:
+  // a ground-up rewrite does not owe its prototype a migration path, and the
+  // only v1 charts in existence live in individual browsers that this code has
+  // no way to reach.
   if (input.schemaVersion !== CHART_SCHEMA_VERSION) {
     errors.push(
       `Unsupported schemaVersion ${String(input.schemaVersion)} — this build reads ${CHART_SCHEMA_VERSION}.`,
