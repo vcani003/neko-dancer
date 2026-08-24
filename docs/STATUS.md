@@ -75,6 +75,8 @@ Full reasoning in `IMPLEMENTATION-PLAN.md` Part 1.
 | Should `OKAY` break the combo? It is the tier that does, and the name reads wrong | ADR-005 |
 | Should a masher be able to *fail*? Today they clear at 14% accuracy | `MULTIPLAYER-GAPS.md`, API.md §3 |
 | How is the game served long-term — mDNS, tunnel, or a real deployment? | `DIAGNOSIS-media.md` |
+| Sprite cats: tint greyscale parts per player, or accept one shared look? | `ART-BRIEF.md` |
+| Set up Playwright? 1146 tests could not see the Play-button bug | `MULTIPLAYER-GAPS.md` |
 
 ---
 
