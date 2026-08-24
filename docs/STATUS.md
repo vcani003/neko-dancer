@@ -100,6 +100,10 @@ timing carries over unchanged because `CatPose` describes intent, not pixels.
 Each of these cost real time. Full write-ups in `PLAYTEST-FINDINGS.md` and
 `SECURITY.md`.
 
+- **Tapping the tempo is not describing the song.** Forty taps to find a BPM
+  were read as the song's structure, so everything after the last tap became a
+  skipped passage and a four-minute song charted as thirteen seconds. The two
+  readings are now separate buttons.
 - **A bare IP is not a domain.** YouTube refuses restriction-bearing videos on a
   numeric origin. Share the `.local` hostname. Measured 6/6 vs 5/5.
 - **Picking and readying must be separate actions.** Bundled, every player who
@@ -117,7 +121,7 @@ Each of these cost real time. Full write-ups in `PLAYTEST-FINDINGS.md` and
 
 | | |
 |---|---|
-| Tests | **1146** across 35 files |
+| Tests | **1150** across 35 files |
 | Contracts | `@neko/protocol` — 657 tests |
 | Engine | `@neko/game-core` — 219 tests |
 | Protocol suite | 25 real-socket tests |

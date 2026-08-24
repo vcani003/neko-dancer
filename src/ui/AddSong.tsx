@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fitTempo, normaliseBpm, MIN_TAPS, type TempoFit } from '../charts/ChartRecorder.ts';
 import { analysisFromTempo, youTubeVideoId } from '../analysis/fromTempo.ts';
-import { inferPlanFromTaps } from '../charts/SongPlan.ts';
+import { flatPlan, inferPlanFromTaps } from '../charts/SongPlan.ts';
 import { generateChart, type GeneratedDifficulty } from '../analysis/generate.ts';
 import { YouTubeAdapter } from '../playback/YouTubeAdapter.ts';
 import type { Chart } from '../charts/schema.ts';
@@ -27,6 +27,12 @@ interface Props {
 
 /** Enough taps to be sure, few enough that nobody minds. */
 const TARGET_TAPS = 8;
+
+/** m:ss — a duration a person can compare against a song they know. */
+function formatMs(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
 
 export default function AddSong({ onCharted, onCancel }: Props) {
   const [step, setStep] = useState<Step>('url');
@@ -44,6 +50,8 @@ export default function AddSong({ onCharted, onCancel }: Props) {
    */
   const [shapeTaps, setShapeTaps] = useState<number[]>([]);
   const [fit, setFit] = useState<TempoFit | null>(null);
+  /** Read once the video is ready, so coverage can be shown while tapping. */
+  const durationRef = useRef<number | null>(null);
   const [difficulty, setDifficulty] = useState<GeneratedDifficulty>('normal');
 
   const playerRef = useRef<HTMLDivElement>(null);
@@ -69,6 +77,9 @@ export default function AddSong({ onCharted, onCancel }: Props) {
         videoId,
         container: playerRef.current!,
       });
+      // Read once here rather than at build time, so the coverage line can be
+      // shown while tapping — which is the only moment it can change a decision.
+      durationRef.current = adapterRef.current.getDurationMs() ?? null;
       setStep('tapping');
       setTaps([]);
       setFit(null);
@@ -109,7 +120,35 @@ export default function AddSong({ onCharted, onCancel }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [step, tap]);
 
-  const makeChart = useCallback(() => {
+  /**
+   * How the taps are read.
+   *
+   * `quick` uses them for TEMPO ONLY — a handful of beats says where the grid
+   * is, and the chart is generated across the whole song from it.
+   *
+   * `shape` additionally reads them as the song's structure: gaps become
+   * passages with no arrows, denser stretches become busier ones.
+   *
+   * The distinction is the whole point. Read as shape, forty taps to find the
+   * BPM of a four-minute song said "this song is thirteen seconds long and then
+   * silent", and produced a chart to match — quietly, with nothing to indicate
+   * that ninety-five per cent of it had been skipped.
+   */
+  /**
+   * How much of the song the taps actually cover.
+   *
+   * The number that decides which mode you want, and the one whose absence made
+   * the old behaviour a trap: you tapped, you got a chart, and nothing said the
+   * rest of the song had been thrown away.
+   */
+  const coverage = (() => {
+    const durationMs = durationRef.current;
+    if (shapeTaps.length < 2 || !durationMs) return null;
+    const tappedMs = shapeTaps[shapeTaps.length - 1] - shapeTaps[0];
+    return { tappedMs, durationMs, fraction: Math.min(1, tappedMs / durationMs) };
+  })();
+
+  const makeChart = useCallback((mode: 'quick' | 'shape') => {
     const adapter = adapterRef.current;
     const videoId = videoIdRef.current;
     if (!fit || !adapter || !videoId) return;
@@ -120,9 +159,14 @@ export default function AddSong({ onCharted, onCancel }: Props) {
     const durationMs = adapter.getDurationMs() ?? 180_000;
     const analysis = analysisFromTempo({ bpm, firstBeatMs: fit.firstBeatMs, durationMs });
 
-    // Everything tapped, not just the tempo: gaps become skipped passages and
-    // faster stretches become busier ones.
-    const plan = inferPlanFromTaps(shapeTaps, bpm, fit.firstBeatMs, durationMs);
+    const plan =
+      mode === 'shape'
+        ? // Everything tapped, not just the tempo: gaps become skipped passages
+          // and faster stretches become busier ones. Where you stop, the song
+          // goes quiet — deliberate for now, and expected to be reworked.
+          inferPlanFromTaps(shapeTaps, bpm, fit.firstBeatMs, durationMs)
+        : // Tempo only. One section, the whole song, even throughout.
+          flatPlan(bpm, fit.firstBeatMs, durationMs);
 
     onCharted(
       generateChart(analysis, {
@@ -239,19 +283,47 @@ export default function AddSong({ onCharted, onCancel }: Props) {
             ))}
           </div>
 
-          <button className="button--primary" onClick={makeChart} disabled={!enough}>
-            {enough ? 'Build the chart from my taps' : `${MIN_TAPS - taps.length} more taps`}
+          {coverage && (
+            <p className="hint" style={{ fontSize: '0.72rem' }}>
+              {taps.length} taps · covering {formatMs(coverage.tappedMs)} of{' '}
+              {formatMs(coverage.durationMs)} ({Math.round(coverage.fraction * 100)}%)
+            </p>
+          )}
+
+          <button
+            className="button--primary"
+            onClick={() => makeChart('quick')}
+            disabled={!enough}
+          >
+            {enough
+              ? 'Quick chart — use my taps for the tempo'
+              : `${MIN_TAPS - taps.length} more taps`}
           </button>
+          <p className="hint" style={{ fontSize: '0.7rem' }}>
+            Arrows across the whole song, evenly. Tap eight beats or eighty — it only
+            needs to know where the beat is.
+          </p>
+
+          <button onClick={() => makeChart('shape')} disabled={!enough}>
+            Use my tapping as the shape
+          </button>
+          <p className="hint" style={{ fontSize: '0.7rem' }}>
+            For when you have tapped through the whole song. Where you tap faster
+            becomes busier, and <strong>where you stop, the song goes quiet.</strong>
+            {coverage && coverage.fraction < 0.5 && (
+              <>
+                {' '}You have covered {Math.round(coverage.fraction * 100)}% — the other{' '}
+                {Math.round((1 - coverage.fraction) * 100)}% would have no arrows at all.
+              </>
+            )}
+          </p>
+
           <button
             onClick={() => { setTaps([]); setShapeTaps([]); setFit(null); }}
             disabled={taps.length === 0}
           >
             Clear taps and start over
           </button>
-          <p className="hint" style={{ fontSize: '0.7rem' }}>
-            Keep tapping through the whole song if you like. Where you stop becomes a
-            passage with no arrows, and where you tap faster becomes a busier one.
-          </p>
           <button onClick={onCancel}>Cancel</button>
         </>
       )}

@@ -274,3 +274,67 @@ describe('generating against a plan', () => {
     expect(chart.arrows.every((a) => a.timeMs >= 29_000)).toBe(true);
   });
 });
+
+/**
+ * Tapping the tempo is not describing the song.
+ *
+ * Forty taps to find the BPM of a four-minute song were read as its structure,
+ * so everything after the last tap became a skipped passage — the chart came
+ * out thirteen seconds long, quietly, with nothing on screen to say that
+ * ninety-five per cent of the song had been thrown away.
+ *
+ * Two readings of the same taps, chosen explicitly rather than inferred.
+ */
+describe('quick chart versus shape', () => {
+  const BPM = 180;
+  const BEAT = 60_000 / BPM;
+  const DURATION = 4 * 60_000;
+  /** Forty beats, tapped at the start. Enough to fit a tempo, nothing more. */
+  const SPARSE = Array.from({ length: 40 }, (_, i) => 2000 + i * BEAT);
+
+  it('covers the whole song when the taps are read as tempo only', () => {
+    const plan = flatPlan(BPM, 2000, DURATION);
+    expect(plan.sections).toHaveLength(1);
+    expect(plan.sections[0].kind).toBe('play');
+    expect(plan.sections[0].endMs).toBe(DURATION);
+    // Every moment of the song plays, including long after the tapping stopped.
+    expect(playsAt(plan, DURATION - 1000)).toBe(true);
+  });
+
+  /**
+   * The behaviour that produced the short chart, kept on purpose and chosen
+   * deliberately now rather than applied by default. Expected to be reworked.
+   */
+  it('goes quiet after the last tap when the taps are read as shape', () => {
+    const plan = inferPlanFromTaps(SPARSE, BPM, 2000, DURATION);
+    const lastTap = SPARSE[SPARSE.length - 1];
+
+    expect(playsAt(plan, lastTap - BEAT)).toBe(true);
+    expect(playsAt(plan, lastTap + 30_000)).toBe(false);
+    expect(playsAt(plan, DURATION - 1000)).toBe(false);
+
+    const outro = plan.sections.find((s) => s.label === 'outro');
+    expect(outro?.kind).toBe('skip');
+  });
+
+  it('is the difference between a whole song and thirteen seconds of one', () => {
+    const quick = flatPlan(BPM, 2000, DURATION);
+    const shape = inferPlanFromTaps(SPARSE, BPM, 2000, DURATION);
+
+    const playableMs = (plan: SongPlan) =>
+      plan.sections.filter((s) => s.kind === 'play').reduce((n, s) => n + (s.endMs - s.startMs), 0);
+
+    expect(playableMs(quick)).toBe(DURATION);
+    // The tapped stretch, and not much else.
+    expect(playableMs(shape)).toBeLessThan(20_000);
+    expect(playableMs(quick) / playableMs(shape)).toBeGreaterThan(10);
+  });
+
+  /** Tapping right through the song makes the two readings agree again. */
+  it('agrees with quick when the taps really do cover the song', () => {
+    const full = Array.from({ length: Math.floor(DURATION / BEAT) - 2 }, (_, i) => 2000 + i * BEAT);
+    const shape = inferPlanFromTaps(full, BPM, 2000, DURATION);
+    expect(playsAt(shape, DURATION / 2)).toBe(true);
+    expect(playsAt(shape, DURATION - 5000)).toBe(true);
+  });
+});
