@@ -140,11 +140,21 @@ In the order they usually go wrong.
 Walking is not a `CatPose`. Forcing a walk cycle into seven gesture values would
 make both worse.
 
+**Movement is click-to-move at a single steady pace.** Click a point, the cat
+walks there. No WASD, no arrows, no run, no acceleration — WASD and the arrow
+keys belong entirely to gameplay lanes, so movement input and lane input never
+compete.
+
+That simplifies this layer considerably:
+
 ```ts
 interface Locomotion {
+  /** Derived from the movement vector, not from input. */
   direction: MoveDirection;
-  speed: number;      // 0 idle … 1 full walk
-  walkPhase: number;  // 0 … 1, loops
+  /** Effectively binary at one pace: walking, or not. */
+  moving: boolean;
+  /** 0 … 1, loops. Advances with DISTANCE, not time. */
+  walkPhase: number;
 }
 
 type MoveDirection =
@@ -152,10 +162,23 @@ type MoveDirection =
   | 'upLeft' | 'upRight' | 'downLeft' | 'downRight';
 ```
 
-`Wander.step()` already produces the movement; direction and speed are derivable
-from the position delta it computes, and `walkPhase` advances with distance
-travelled rather than with time — so a slow cat takes slow steps instead of
-skating.
+`direction` is read off the vector toward the target and only used to choose
+mirroring and lean — nothing dispatches on it yet (§6).
+
+### `Wander.step()` is already most of this
+
+It walks toward a `target`, clamps to `ROOM_BOUNDS`, and already tracks
+`facing` from the sign of `dx`. Click-to-move is **supplying the target from a
+click instead of from `wanderTarget()`**. Wandering becomes what happens when
+nobody has clicked.
+
+**One thing must change.** It approaches exponentially —
+`t = 1 − exp(−rate · dt)` — which eases out and makes the cat *creep* the last
+stretch. At a steady pace that reads as sliding, and it fights the whole point of
+foot contact. Constant speed toward the target, stop on arrival.
+
+`walkPhase` advances with **distance travelled**, not with time. Tied to time, a
+cat that is barely moving still takes full-speed steps and skates.
 
 ### Independent legs
 
@@ -188,6 +211,10 @@ it is this one.
 **Do not build eight directional families.** First implementation uses the
 existing front-facing avatar for every direction, communicating heading through
 lean, mirroring, walk phase and small transform differences.
+
+At one steady pace with click-to-move, this matters less than it would with
+free-running input: the cat crosses a small room slowly, and the eye has time to
+read position rather than needing the silhouette to announce heading.
 
 Then look at it. If **up** genuinely fails because the cat should be showing its
 back, add `head_back` and `torso_back` at that point. If side movement needs a
@@ -293,22 +320,62 @@ sad     shared parts + sad face + tail down
 
 Do not design all future art before Phase 1 is validated.
 
-| | |
-|---|---|
-| **1** | Replace procedural drawing with segmented sprites. `CatPose` behaviour preserved exactly. |
-| **2** | One neutral idle, looking correct. |
-| **3** | Paw texture swaps and blinking. |
-| **4** | Independent leg transforms, one basic walk cycle. |
-| **5** | Walk applied to room movement directions. |
-| **6** | The extra idle variations. |
-| **7** | First emotes. |
-| **8** | Evaluate whether directional head/torso variants are needed **at all**. |
+**Build the systems procedurally first. Swap in art last.** This is a change
+from the original ordering, and it is the better one — see §13.
 
-Phase 1 is the one that proves the approach. Everything after it is addition.
+| | | Needs art? |
+|---|---|---|
+| **1** | Click-to-move: target from a click, constant speed, `facing` | no |
+| **2** | Independent leg nodes and one basic walk cycle | no |
+| **3** | One neutral idle that looks correct | no |
+| **4** | Extra idle variations, blinking | no |
+| **5** | Expression as a real layer — face out of `CatDancer` | no |
+| **6** | First emotes | no |
+| **7** | **Swap procedural drawing for segmented sprites** | **yes** |
+| **8** | Paw texture swaps, and only then directional variants if needed | yes |
+
+Phases 1–6 need no art at all. The procedural cat can express every one of them
+— less prettily, and that is fine, because what is being tuned is **timing and
+feel**, which survive the swap.
 
 ---
 
-## 13. Open — decide before the art is final
+## 13. When art is actually needed — not yet
+
+**The sprite does not need to exist for any of this to be built.** The rig is
+angles; the art is what gets drawn at them. Everything in §5–§9 — click-to-move,
+the walk cycle, idle variations, blinking, emotes — is arithmetic over the same
+seven values plus a locomotion layer, and the procedural cat renders all of it
+today.
+
+Doing the systems first is not merely acceptable, it is **better**:
+
+- **Iteration is instant.** Tuning a walk cycle means changing a number and
+  reloading. With art in place, adjusting proportions means regenerating a part
+  library and re-cutting it.
+- **Per-player colour already works.** `CatColours` recolours procedurally for
+  free, which is the open question in §13b — deferring the swap defers needing
+  to answer it.
+- **The systems are what is risky.** Whether a chibi walk reads as walking, and
+  whether a room of cats is legible at that size, are questions art cannot
+  answer. They are timing and scale questions.
+- **Tuning survives the swap.** Angles, phase offsets and easing carry over
+  unchanged, because `CatPose` describes intent rather than pixels.
+
+The one real risk is **proportion drift**: poses tuned against a procedural cat
+with different proportions than the final art will need retouching. That is
+bounded — §1 fixes large head and tiny body, and matching the procedural cat's
+proportions to the brief now costs nothing.
+
+So: **the brief's job right now is to stop us building something that makes the
+swap expensive.** Full-body pose frames, pose logic baked into the drawing code,
+or a face welded to the head would each do that. Avoiding those costs nothing
+and is the whole reason to have written this before the art exists.
+
+Make the art when the movement already looks right and you want it to look
+good.
+
+## 13b. Open — decide before the art is final
 
 **Per-player colour.** The procedural cat takes `CatColours` and recolours for
 free; sprites do not. A room of identical cats is a real legibility problem, and

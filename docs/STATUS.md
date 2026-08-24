@@ -75,7 +75,7 @@ Full reasoning in `IMPLEMENTATION-PLAN.md` Part 1.
 | Should `OKAY` break the combo? It is the tier that does, and the name reads wrong | ADR-005 |
 | Should a masher be able to *fail*? Today they clear at 14% accuracy | `MULTIPLAYER-GAPS.md`, API.md §3 |
 | How is the game served long-term — mDNS, tunnel, or a real deployment? | `DIAGNOSIS-media.md` |
-| Sprite cats: tint greyscale parts per player, or accept one shared look? | `ART-BRIEF.md` §13 |
+| Sprite cats: tint greyscale parts per player, or accept one shared look? | `ART-BRIEF.md` §13b — deferred, procedural recolours for free |
 | Set up Playwright? 1146 tests could not see the Play-button bug | `MULTIPLAYER-GAPS.md` |
 
 ---
@@ -87,9 +87,11 @@ system. Four layers compose — world transform, locomotion, gesture, expression
 and three of them already exist in some form (`Wander.ts`, `CatPose.ts`,
 `depthScale`/`y`-sorting in `LaneRenderer`).
 
-Not started; art does not exist yet. Phase 1 is swapping procedural drawing for
-segmented sprites with `CatPose` behaviour preserved exactly, and nothing later
-should be designed until that is validated.
+Not started, and **no art is needed to start**. Phases 1–6 (click-to-move, the
+walk cycle, idles, blinking, expression as a layer, emotes) are all procedural
+on the existing rig; the sprite swap is Phase 7. Building the systems first
+means tuning takes a reload rather than a regenerated part library, and the
+timing carries over unchanged because `CatPose` describes intent, not pixels.
 
 ---
 
