@@ -57,6 +57,8 @@ Eight images. Transparent PNG.
 | 2 | **Head** | **Without the face.** Ears attached is fine. |
 | 3 | **Face** | Eyes, nose, mouth, whiskers, on their own layer. |
 | 4 | **Arm** | ONE arm, hanging straight down. Mirrored in code for the other. |
+| 4b | **Paw — relaxed** | The hanging, idle hand. |
+| 4c | **Paw — open** | The reaching hand, for a raised arm. |
 | 5 | **Leg** | ONE leg, straight. Mirrored in code. |
 | 6 | **Tail — base** | The segment that meets the body. |
 | 7 | **Tail — mid** | |
@@ -65,6 +67,26 @@ Eight images. Transparent PNG.
 **The face is separate on purpose.** It lets the eyes close on a miss and blink
 on idle without redrawing the head, which is most of what sells a reaction —
 the current procedural cat already does this and it would be a shame to lose it.
+
+### The paw, and the limit of pure rotation
+
+A rotated arm is the same arm at a different angle, and a reaching paw does not
+look like a hanging one — the fingers spread, the wrist turns. Rotation cannot
+produce that, and pretending otherwise gives you a stiff puppet.
+
+The answer is a **texture swap on a bone**: the arm still rotates, and the *paw*
+at the end of it switches between two or three drawings depending on the pose.
+`rightArm > 0.6` picks the open paw; anything lower keeps the relaxed one, with a
+short crossfade so the change is not a pop.
+
+This is still parts rather than poses, and that is the whole point — it costs
+**two extra images, once**, not one per stance. Add a third (a curled fist, for
+a miss) if you want it; that is the shape of the cost. What it never becomes is
+`arm × stance × accessory`.
+
+The same trick covers anything else where an angle is not enough: a squashed
+torso for a heavy crouch, an alarmed tail tip. Add them when a pose looks wrong,
+not in advance.
 
 Optional later, same rules: `ear-left`, `ear-right` if you want ears that flick
 independently of the head.
@@ -130,7 +152,8 @@ its charm will come from the movement.
 1. Cut the grid into eight files under `apps/web/public/cat/`.
 2. Replace the drawing inside `CatDancer.draw()` — sprites parented into a
    container per limb, anchored at the pivots, rotated from the same seven
-   numbers that drive the shapes today.
+   numbers that drive the shapes today. The paw is a child of the arm, so it
+   inherits the arm's rotation and only its texture is chosen.
 3. `CatPose.ts` is untouched. Every existing pose, blend and decay keeps working
    because they describe angles, and angles do not care what is drawn at them.
 
