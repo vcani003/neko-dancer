@@ -75,8 +75,21 @@ Full reasoning in `IMPLEMENTATION-PLAN.md` Part 1.
 | Should `OKAY` break the combo? It is the tier that does, and the name reads wrong | ADR-005 |
 | Should a masher be able to *fail*? Today they clear at 14% accuracy | `MULTIPLAYER-GAPS.md`, API.md §3 |
 | How is the game served long-term — mDNS, tunnel, or a real deployment? | `DIAGNOSIS-media.md` |
-| Sprite cats: tint greyscale parts per player, or accept one shared look? | `ART-BRIEF.md` |
+| Sprite cats: tint greyscale parts per player, or accept one shared look? | `ART-BRIEF.md` §13 |
 | Set up Playwright? 1146 tests could not see the Play-button bug | `MULTIPLAYER-GAPS.md` |
+
+---
+
+## Avatar animation
+
+`ART-BRIEF.md` is the direction: a cut-out rig extended into a social-RPG avatar
+system. Four layers compose — world transform, locomotion, gesture, expression —
+and three of them already exist in some form (`Wander.ts`, `CatPose.ts`,
+`depthScale`/`y`-sorting in `LaneRenderer`).
+
+Not started; art does not exist yet. Phase 1 is swapping procedural drawing for
+segmented sprites with `CatPose` behaviour preserved exactly, and nothing later
+should be designed until that is validated.
 
 ---
 

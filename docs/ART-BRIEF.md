@@ -1,168 +1,340 @@
-# Art brief — the cat, as a cut-out rig
+# Avatar animation — the cat
 
-What to generate, and why it is this and not something else.
+The art direction, the rig, and how the animation systems compose.
+
+This began as a brief for one dancing cat. It is now the foundation of the
+avatar system: dance, walking, idling and emoting. The rig did not change to
+absorb that, which is the point.
 
 ---
 
-## The approach: parts, assembled in code
+## The one idea
 
-The cat is already a **skeleton**. `src/render/CatPose.ts` describes any pose
-with seven numbers:
+> **Animation complexity grows in code and in small reusable part variants —
+> never by multiplying full-body artwork across pose × direction × animation ×
+> accessory.**
 
-```ts
-lean      // -1 fully left … 1 fully right
-crouch    //  0 standing … 1 down
-leftArm   //  0 hanging … 1 overhead
-rightArm
-hop       // vertical bounce, in body-heights
-tilt      // head tilt, radians
-tail      // -1 … 1 sway
+Everything below is downstream of that sentence. When a decision is unclear, the
+question is "does this add a drawing, or a number?"
+
+---
+
+## 1. Visual direction
+
+**Reference:** LINE Play, Kingdom Hearts Union χ — social-game avatars.
+
+| | |
+|---|---|
+| **Outlines** | Extremely light, or none. Shape separation comes from **colour**, not contour. |
+| **Shading** | Soft, low-contrast cel. Subtle internal shading only. |
+| **Proportions** | Large head, tiny body. Chibi. |
+| **Construction** | Simple and modular — it must read as assembled parts. |
+| **Legibility** | Clean and readable **at small size**. The cat is often a fifth of the room. |
+| **Facing** | Front-facing. |
+
+**Not:** a plush mascot. Not a sticker illustration. Not heavily rendered.
+
+**No strongly directional baked shadows.** Parts rotate. A shadow painted onto
+an arm as though lit from above ends up lit from below the moment the arm goes
+overhead. Internal shading is fine where it stays plausible through the whole
+rotation range.
+
+> The earlier direction said *"bold clean outlines"*. That is superseded — it
+> pulls toward sticker illustration and away from a social avatar.
+
+---
+
+## 2. The four layers
+
+An avatar's appearance in any frame is the composition of four independent
+systems. They **compose**; none replaces another.
+
+```
+world transform          where the cat is in the room, and how big
+  + locomotion           walking: legs, bob, arm swing, facing
+  + gesture (CatPose)    dance, WASD, emote body language
+  + expression           face state and texture swaps
 ```
 
-`blend()` and `decay()` already interpolate between poses, which is the hard
-part and it is finished. The lane poses are already just numbers —
-`LANE_POSES.up` is `{ leftArm: 1, rightArm: 1, … }`, not a picture.
+### What already exists
 
-So: **draw each body part once, in a neutral position. The code rotates them.**
-There is no "up-arrow arm" to draw. There is one arm.
+| Layer | State |
+|---|---|
+| **World transform** | ✅ `Wander.ts` — `Walker`, `step()`, `ROOM_BOUNDS`, `depthScale()`. `LaneRenderer` already sorts by `y` for depth. |
+| **Locomotion** | ❌ `step()` moves the cat but exposes no `direction`, `speed` or `walkPhase`. |
+| **Gesture** | ✅ `CatPose.ts` — seven values, `blend()`, `decay()`, `poseAt()`. |
+| **Expression** | ❌ The face is drawn inside `CatDancer` rather than being a layer. |
 
-### Why not a frame per pose
+So this is an extension of a working system, not a rewrite.
 
-| | Art | Blending | Accessories |
-|---|---|---|---|
-| Pose frames | every stance × every part | snaps between frames | redrawn in every frame |
-| **Parts (this)** | **~8 images, once** | free, already built | parented to a bone, works everywhere |
+### The composition rule that will bite if we do not decide it now
 
-Accessories decide it. A hat is one image attached to the head bone and it then
-works in every pose, at every angle, forever. In a frame-based sheet it is a hat
-drawn into every frame of every animation.
+Walking wants the arms (swing). A lane press wants the arms (raise). Both are
+live at once the moment someone hits an arrow while crossing the room.
 
-### Why not Spine or DragonBones
+**Gesture wins, and locomotion yields smoothly.** Locomotion contributes an
+*offset*; gesture contributes a *target*; the locomotion contribution is scaled
+down by how strongly a gesture is active:
 
-They are the professional version of exactly this, and they are the right answer
-for a game with a dozen characters and a full-time animator. Here they would add
-a paid tool, a runtime dependency and a learning curve to replace a skeleton
-that is seven numbers and already works. Not now — and if it ever is, the parts
-generated for this brief are the same parts that rig would use.
+```
+arm = locomotionSwing × (1 − gestureStrength) + gesturePose
+```
 
----
+The same holds for the tail: both layers push it, gesture dominates while it is
+decaying, and locomotion's sway returns as the gesture fades. Without this rule
+the two systems fight and the arms stutter.
 
-## What to generate
-
-Eight images. Transparent PNG.
-
-| # | Part | Notes |
-|---|---|---|
-| 1 | **Torso** | The body. Neutral, upright, facing the viewer. |
-| 2 | **Head** | **Without the face.** Ears attached is fine. |
-| 3 | **Face** | Eyes, nose, mouth, whiskers, on their own layer. |
-| 4 | **Arm** | ONE arm, hanging straight down. Mirrored in code for the other. |
-| 4b | **Paw — relaxed** | The hanging, idle hand. |
-| 4c | **Paw — open** | The reaching hand, for a raised arm. |
-| 5 | **Leg** | ONE leg, straight. Mirrored in code. |
-| 6 | **Tail — base** | The segment that meets the body. |
-| 7 | **Tail — mid** | |
-| 8 | **Tail — tip** | Three segments make a sway curl rather than swing like a stick. |
-
-**The face is separate on purpose.** It lets the eyes close on a miss and blink
-on idle without redrawing the head, which is most of what sells a reaction —
-the current procedural cat already does this and it would be a shame to lose it.
-
-### The paw, and the limit of pure rotation
-
-A rotated arm is the same arm at a different angle, and a reaching paw does not
-look like a hanging one — the fingers spread, the wrist turns. Rotation cannot
-produce that, and pretending otherwise gives you a stiff puppet.
-
-The answer is a **texture swap on a bone**: the arm still rotates, and the *paw*
-at the end of it switches between two or three drawings depending on the pose.
-`rightArm > 0.6` picks the open paw; anything lower keeps the relaxed one, with a
-short crossfade so the change is not a pop.
-
-This is still parts rather than poses, and that is the whole point — it costs
-**two extra images, once**, not one per stance. Add a third (a curled fist, for
-a miss) if you want it; that is the shape of the cost. What it never becomes is
-`arm × stance × accessory`.
-
-The same trick covers anything else where an angle is not enough: a squashed
-torso for a heavy crouch, an alarmed tail tip. Add them when a pose looks wrong,
-not in advance.
-
-Optional later, same rules: `ear-left`, `ear-right` if you want ears that flick
-independently of the head.
+This also implies `poseAt()` grows a sibling that returns a **partial offset**
+rather than a complete pose, so layers can sum. `CatPose`'s own behaviour is
+untouched.
 
 ---
 
-## Rules that make them assemble correctly
+## 3. The part library
 
-These are the things that go wrong, in the order they usually go wrong.
+A **part library**, not a sprite sheet. Transparent PNG.
 
-**1. Round the joints.** A cut-out rig rotates limbs, and a flat-cut shoulder
-opens a visible gap the moment the arm lifts. Draw the top of the arm and the
-top of the leg as a **ball or a pill** — a rounded cap that stays covered at any
-angle. This single detail is the difference between "charming paper puppet" and
-"broken doll".
+| Part | Notes |
+|---|---|
+| `torso` | Neutral, upright, front-facing |
+| `head` | **Without the face.** Ears attached for now |
+| `face` | Eyes, nose, mouth, whiskers — its own layer |
+| `arm` | ONE arm, hanging straight down. Mirrored in code |
+| `paw_relaxed` | The hanging, idle hand |
+| `paw_open` | The reaching hand, for a raised arm |
+| `paw_fist` | Curled. Optional at first, expected soon — a miss reads better with it |
+| `leg` | ONE leg, straight. Mirrored in code |
+| `tail_base` · `tail_mid` · `tail_tip` | Three segments sway as a curl rather than swinging like a stick |
 
-**2. Neutral pose, every time.** Arm hanging straight down, leg straight, tail
-straight back, head level. Every rotation is applied from there, so a part drawn
-already-bent bends twice.
+**One arm and one leg texture, mirrored** — but see §5: the *runtime* holds two
+independent leg nodes even though they share one texture.
 
-**3. Consistent scale between parts.** Generate them in one batch, at one scale,
-so the head is not twice the size of the torso. Easiest way: ask for them all in
-a single image on a grid, and cut them up — I can do the cutting.
+Add a variant **only when rotation or face state visibly fails**, never in
+advance. That rule is what keeps the library from becoming a sheet.
 
-**4. Generous transparent padding.** At least 20% around each part. Rotation
-sweeps outside the original bounds and a tight crop clips the limb.
+---
 
-**5. Pivot at the top-centre of a limb.** The rotation origin for an arm is the
-shoulder, for a leg the hip, for a tail segment the end that joins the previous
-one. If each part is drawn with that point at the **top edge, horizontally
-centred**, I can set every anchor without measuring. If not, tell me where the
-pivots are and I will use those instead — but consistency is cheaper.
+## 4. Rules that make parts assemble correctly
 
-**6. Face the viewer, no perspective.** The room is drawn flat with a depth
-scale; a three-quarter cat will not turn to face the other way.
+In the order they usually go wrong.
 
-**7. One consistent light direction**, or none. Parts rotate; a shadow baked
-into an arm ends up lit from below when the arm goes overhead.
+1. **Round the joints.** A flat-cut shoulder opens a gap the instant the arm
+   lifts. The top of the arm and the top of the leg are a **ball or pill** that
+   stays covered at any angle. This one detail separates "charming paper puppet"
+   from "broken doll".
+2. **Neutral pose, always.** Arm hanging, leg straight, tail straight back, head
+   level. A part drawn already-bent bends twice.
+3. **Consistent scale.** Generate in one batch on a grid so the head is not
+   twice the torso. I will cut the grid.
+4. **Generous transparent padding** — 20% or more. Rotation sweeps outside the
+   original bounds and a tight crop clips the limb.
+5. **Pivot at top-centre.** Shoulder for an arm, hip for a leg, the joining end
+   for a tail segment. Drawn that way, I set every anchor without measuring.
+6. **Front-facing, no perspective.** The room is flat with a depth scale.
+7. **No directional baked shadows** — see §1.
+
+---
+
+## 5. Locomotion
+
+Walking is not a `CatPose`. Forcing a walk cycle into seven gesture values would
+make both worse.
+
+```ts
+interface Locomotion {
+  direction: MoveDirection;
+  speed: number;      // 0 idle … 1 full walk
+  walkPhase: number;  // 0 … 1, loops
+}
+
+type MoveDirection =
+  | 'up' | 'down' | 'left' | 'right'
+  | 'upLeft' | 'upRight' | 'downLeft' | 'downRight';
+```
+
+`Wander.step()` already produces the movement; direction and speed are derivable
+from the position delta it computes, and `walkPhase` advances with distance
+travelled rather than with time — so a slow cat takes slow steps instead of
+skating.
+
+### Independent legs
+
+One texture, **two nodes**: `leftLegNode` and `rightLegNode`, each rotating and
+translating independently. The walk is four keyframes with interpolated
+in-betweens:
+
+```
+LEFT CONTACT    left leg forward · right back · opposite arm swing · body lower
+PASS            legs near centre · body higher
+RIGHT CONTACT   right leg forward · left back · opposite arm swing · body lower
+PASS            legs near centre · body higher
+```
+
+**Goals, and they are all restraint:** tiny stride · clear alternating foot
+contact · slight body bob · restrained opposite-arm motion · the large head
+stays visually stable · the tail follows with a delay.
+
+**Do not make it bouncy.** A chibi walk that bounces reads as hopping, and this
+avatar spends most of its time walking.
+
+**Foot contact is the thing that sells it.** A planted foot makes the cat belong
+to the floor; two sliding feet make it hover. If only one detail survives review,
+it is this one.
+
+---
+
+## 6. Direction, without eight art sets
+
+**Do not build eight directional families.** First implementation uses the
+existing front-facing avatar for every direction, communicating heading through
+lean, mirroring, walk phase and small transform differences.
+
+Then look at it. If **up** genuinely fails because the cat should be showing its
+back, add `head_back` and `torso_back` at that point. If side movement needs a
+different silhouette, add it then.
+
+Same rule as everywhere: **a texture variant when the geometry visibly fails,
+not before.**
+
+---
+
+## 7. Idle
+
+Two or three variations, all **procedural on the existing rig** — no new
+character drawings.
+
+| | |
+|---|---|
+| `idle-neutral` | Very subtle breathing: body rises and settles |
+| `idle-sway` | Tiny asymmetric weight shift, slight arm movement, tail follow-through |
+| `idle-paw` | Rare small paw adjustment, or similar personality beat |
+
+**Principles:** a relaxed 2–3 second cycle · head mostly stable · body movement
+very small · arms barely move · tail trails the body · occasional blinking ·
+**never a repeated wave** · avoid perfect symmetry.
+
+Selection carries some randomness, so a room of cats is not one cat looping in
+unison. Seed it per player, the way `Wander` already seeds wandering.
+
+---
+
+## 8. Emotes
+
+The separated face becomes an expression system. **No full-body sprite per
+emote.**
+
+An emote composes: **eye state · mouth state · head tilt · body lean/crouch ·
+arm gesture · paw swap · tail position.**
+
+```
+happy       eyes happy    · mouth smile  · body tiny lift  · tail raised
+surprised   eyes wide     · mouth small O · body recoil    · arms slightly up
+sad         eyes sad      · mouth frown  · head tilts down · tail droops
+```
+
+Starter set: `happy` `surprised` `sad` `angry` `love` `awkward` `sleepy`
+`groove`.
+
+Eyes and mouth are separate small textures, so eight emotes cost roughly eight
+eye states and six mouth states — not eight cats. Ears stay attached to the head
+for the first conversion; split them out only if independent ear reactions turn
+out to matter.
+
+---
+
+## 9. Animation feel
+
+- **Stable oversized head.** The body does the moving; the head reads as
+  weighted. This is most of what makes a chibi avatar look right.
+- **Small ranges** for locomotion and idle. **Dance may exaggerate freely** —
+  that is the one place large motion belongs.
+- **Ease, don't march.** Linear interpolation reads as robotic.
+- **Secondary motion:** body leads → head follows slightly → tail follows later.
+- **Asymmetry** in idle and emotion. Perfect mirroring looks mechanical.
+- **Foot contact** — §5.
+- **Short transitions.** Idle→walk, walk→idle and gesture changes blend rather
+  than snap. `blend()` and `decay()` already do this for gestures.
+
+---
+
+## 10. The room
+
+The avatar is a small RPG/social-game character that walks around a room.
+
+**World movement is independent of animation.** `cat.x` / `cat.y` say where it
+is; the walk cycle loops while velocity is non-zero. Neither drives the other.
+
+**Navigation uses the feet, not the silhouette.** The footprint for collision and
+pathing is a small ellipse at the floor — a giant head that overlaps a lamp is
+correct and should not block movement.
+
+**Depth sorting is by `y`.** Already implemented: `LaneRenderer` sorts drawn cats
+by `y`, and `depthScale()` shrinks with distance. Furniture must eventually join
+the same sort, or a cat will walk in front of a chair it is standing behind.
+
+---
+
+## 11. Terminology
+
+"Idle set", "WASD set", "walking set", "emote set" mean **an animation
+definition over the shared part library** — not a new collection of full-body
+sprites. A set may carry a few texture variants; the body art is shared.
+
+```
+idle    shared parts + neutral face
+W       shared parts + open paw when the arms rise
+walk    shared parts + independent left/right leg transforms
+sad     shared parts + sad face + tail down
+```
+
+---
+
+## 12. Phases
+
+Do not design all future art before Phase 1 is validated.
+
+| | |
+|---|---|
+| **1** | Replace procedural drawing with segmented sprites. `CatPose` behaviour preserved exactly. |
+| **2** | One neutral idle, looking correct. |
+| **3** | Paw texture swaps and blinking. |
+| **4** | Independent leg transforms, one basic walk cycle. |
+| **5** | Walk applied to room movement directions. |
+| **6** | The extra idle variations. |
+| **7** | First emotes. |
+| **8** | Evaluate whether directional head/torso variants are needed **at all**. |
+
+Phase 1 is the one that proves the approach. Everything after it is addition.
+
+---
+
+## 13. Open — decide before the art is final
+
+**Per-player colour.** The procedural cat takes `CatColours` and recolours for
+free; sprites do not. A room of identical cats is a real legibility problem, and
+it is already visible in multiplayer today. Two options:
+
+- Draw the parts **white or greyscale** and tint per player in code — Pixi does
+  this natively, and it preserves the free-recolour property.
+- Accept one shared look and distinguish players another way (name labels exist
+  already, but they are small).
+
+The greyscale route costs nothing extra at generation time and keeps the option
+open, so it is the one to take unless the style depends on baked colour.
 
 ---
 
 ## Prompt sketch
 
-Something like this, adjusted to taste — the constraints matter more than the
-wording:
+Constraints matter more than wording. Generate several; pick the one whose
+**joints are roundest**, not the prettiest whole cat — the charm comes from the
+movement, which does not exist yet.
 
-> A cute chibi cat character, split into separate body parts for a cut-out
-> animation rig, arranged on a grid on a transparent background: torso, head
-> without face, face layer (eyes and mouth only), one arm hanging straight down,
-> one leg straight, and a tail in three segments. Flat vector style, bold clean
-> outlines, soft pastel palette, front-facing, no perspective, no shadows.
-> Rounded ball joints at the shoulder and hip. Each part centred with padding
-> around it.
-
-Generate a few. The one to pick is the one whose **joints are roundest**, not
-the one that is prettiest as a whole cat — the whole cat is assembled later and
-its charm will come from the movement.
-
----
-
-## What I do with them
-
-1. Cut the grid into eight files under `apps/web/public/cat/`.
-2. Replace the drawing inside `CatDancer.draw()` — sprites parented into a
-   container per limb, anchored at the pivots, rotated from the same seven
-   numbers that drive the shapes today. The paw is a child of the arm, so it
-   inherits the arm's rotation and only its texture is chosen.
-3. `CatPose.ts` is untouched. Every existing pose, blend and decay keeps working
-   because they describe angles, and angles do not care what is drawn at them.
-
-`CatDancer` is 169 lines behind a four-method surface (`constructor`, `view`,
-`draw`, `destroy`) with two call sites, so the change is contained to one file
-plus asset loading.
-
-**Colour:** the procedural cat takes `CatColours` and recolours for free. Sprites
-do not. If per-player colour matters — and in a room full of identical cats it
-does — either generate the parts in a **white/greyscale** form and tint them in
-code, which Pixi does natively, or accept that everyone is the same cat and
-distinguish players some other way. Worth deciding before the art is final.
+> A cute chibi cat avatar in a soft social-game style, split into separate body
+> parts for a cut-out animation rig, arranged on a grid on a transparent
+> background: torso, head without face, face layer (eyes and mouth only), one arm
+> hanging straight down, one leg straight, three tail segments, and three paw
+> shapes (relaxed, open, curled). Large head, tiny body. Extremely light or no
+> outlines — shapes separated by colour rather than contour. Soft low-contrast
+> cel shading, no strong directional shadows. Front-facing, no perspective.
+> Rounded ball joints at shoulder and hip. Each part centred with padding.
