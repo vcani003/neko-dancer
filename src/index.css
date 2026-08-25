@@ -270,3 +270,16 @@ kbd {
 .songrow__confirm { display: flex; align-items: center; gap: 6px; }
 .songrow__confirm .hint { white-space: nowrap; }
 .songrow__danger { color: var(--bad); border-color: var(--bad); }
+
+/* The mode cards: a title and an explanation, because the choice changes what
+   you are about to be asked to do rather than just what happens afterwards. */
+.modecard { display: block; width: 100%; text-align: left; padding: 12px 14px; }
+.modecard__title { display: block; font-weight: 700; margin-bottom: 3px; }
+.modecard__body { display: block; font-size: 0.76rem; color: var(--muted); line-height: 1.45; }
+
+/* The tap pad. Large, because it is the thing being hit repeatedly. */
+.tappad { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 16px; }
+.tappad__count {
+  min-width: 2.4em; padding: 1px 8px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28); font-size: 0.9rem;
+}

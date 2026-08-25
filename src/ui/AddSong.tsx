@@ -18,7 +18,17 @@ import { generateChart, type GeneratedDifficulty } from '../analysis/generate.ts
 import { YouTubeAdapter } from '../playback/YouTubeAdapter.ts';
 import type { Chart } from '../charts/schema.ts';
 
-type Step = 'url' | 'loading' | 'tapping' | 'done';
+type Step = 'url' | 'loading' | 'mode' | 'tapping' | 'done';
+
+/**
+ * How the taps will be read — chosen BEFORE tapping, not after.
+ *
+ * It has to come first because it changes what you are being asked to do:
+ * `quick` wants eight beats and then stop, `shape` wants you to tap through the
+ * whole song. Offering the choice afterwards asked people to have already
+ * tapped the right way for a decision they had not made yet.
+ */
+type ChartMode = 'quick' | 'shape';
 
 interface Props {
   onCharted: (chart: Chart) => void;
@@ -36,6 +46,7 @@ function formatMs(ms: number): string {
 
 export default function AddSong({ onCharted, onCancel }: Props) {
   const [step, setStep] = useState<Step>('url');
+  const [mode, setMode] = useState<ChartMode>('quick');
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +91,7 @@ export default function AddSong({ onCharted, onCancel }: Props) {
       // Read once here rather than at build time, so the coverage line can be
       // shown while tapping — which is the only moment it can change a decision.
       durationRef.current = adapterRef.current.getDurationMs() ?? null;
-      setStep('tapping');
+      setStep('mode');
       setTaps([]);
       setFit(null);
     } catch (err) {
@@ -148,7 +159,7 @@ export default function AddSong({ onCharted, onCancel }: Props) {
     return { tappedMs, durationMs, fraction: Math.min(1, tappedMs / durationMs) };
   })();
 
-  const makeChart = useCallback((mode: 'quick' | 'shape') => {
+  const makeChart = useCallback((mode: ChartMode) => {
     const adapter = adapterRef.current;
     const videoId = videoIdRef.current;
     if (!fit || !adapter || !videoId) return;
@@ -229,19 +240,61 @@ export default function AddSong({ onCharted, onCancel }: Props) {
 
       {step === 'loading' && <p className="hint">Loading the video…</p>}
 
-      {step === 'tapping' && (
+      {step === 'mode' && (
         <>
-          <p className="hint">
-            Press play on the video, then tap <kbd>space</kbd> on each beat —
-            about {TARGET_TAPS} of them. Count along out loud if it helps.
-          </p>
+          <p className="hint">How do you want to chart this song?</p>
           <p className="hint" style={{ fontSize: '0.72rem' }}>
             Your taps <em>are</em> the analysis. Nothing reads the audio; the tempo is
             worked out from how evenly you tapped, and the chart is built on that.
           </p>
 
-          <button className="button--primary" onClick={tap}>
-            Tap the beat ({taps.length})
+          <button
+            className="modecard"
+            onClick={() => { setMode('quick'); setStep('tapping'); }}
+          >
+            <span className="modecard__title">Quick — just find the tempo</span>
+            <span className="modecard__body">
+              Tap along for about {TARGET_TAPS} beats, then stop. Arrows are generated
+              across the whole song, evenly.
+            </span>
+          </button>
+
+          <button
+            className="modecard"
+            onClick={() => { setMode('shape'); setStep('tapping'); }}
+          >
+            <span className="modecard__title">Detailed — tap the whole song</span>
+            <span className="modecard__body">
+              Tap all the way through. Where you tap faster becomes busier, and where
+              you stop, the song goes quiet.
+            </span>
+          </button>
+
+          <button onClick={onCancel}>Cancel</button>
+        </>
+      )}
+
+      {step === 'tapping' && (
+        <>
+          <p className="hint">
+            {mode === 'quick' ? (
+              <>
+                Press play, then tap <kbd>space</kbd> on each beat — about{' '}
+                {TARGET_TAPS} of them. Count along out loud if it helps.
+              </>
+            ) : (
+              <>
+                Press play, then tap <kbd>space</kbd> on every beat, right through to
+                the end of the song.
+              </>
+            )}
+          </p>
+
+          {/* The tap pad. Space does the same thing; this is for the mouse, and
+              it carries the count because that is what you look at while
+              tapping. */}
+          <button className="button--primary tappad" onClick={tap}>
+            Tap the beat<span className="tappad__count mono">{taps.length}</span>
           </button>
 
           <div className="tapmeter">
@@ -283,56 +336,57 @@ export default function AddSong({ onCharted, onCancel }: Props) {
             ))}
           </div>
 
-          {coverage && (
+          {mode === 'shape' && coverage && (
             <p className="hint" style={{ fontSize: '0.72rem' }}>
               {taps.length} taps · covering {formatMs(coverage.tappedMs)} of{' '}
               {formatMs(coverage.durationMs)} ({Math.round(coverage.fraction * 100)}%)
+              {coverage.fraction < 0.5 && (
+                <>
+                  {' '}— the other {Math.round((1 - coverage.fraction) * 100)}% will have
+                  no arrows at all.
+                </>
+              )}
             </p>
           )}
 
-          {/*
-            The label stays the action, disabled or not. It used to swap to
-            "4 more taps", which is a requirement wearing a button's clothes —
-            it reads as though pressing it would produce the taps. The count is
-            already on the tap button, in the meter beneath it, and in the
-            instruction above; a fourth copy of it was not the missing piece.
-          */}
           <button
             className="button--primary"
-            onClick={() => makeChart('quick')}
+            onClick={() => makeChart(mode)}
             disabled={!enough}
             title={enough ? undefined : `Tap at least ${MIN_TAPS} beats first`}
           >
-            Quick chart — use my taps for the tempo
+            Done — build the chart
           </button>
-          <p className="hint" style={{ fontSize: '0.7rem' }}>
-            Arrows across the whole song, evenly. Tap eight beats or eighty — it only
-            needs to know where the beat is.
-          </p>
-
-          <button
-            onClick={() => makeChart('shape')}
-            disabled={!enough}
-            title={enough ? undefined : `Tap at least ${MIN_TAPS} beats first`}
-          >
-            Use my tapping as the shape
-          </button>
-          <p className="hint" style={{ fontSize: '0.7rem' }}>
-            For when you have tapped through the whole song. Where you tap faster
-            becomes busier, and <strong>where you stop, the song goes quiet.</strong>
-            {coverage && coverage.fraction < 0.5 && (
-              <>
-                {' '}You have covered {Math.round(coverage.fraction * 100)}% — the other{' '}
-                {Math.round((1 - coverage.fraction) * 100)}% would have no arrows at all.
-              </>
-            )}
-          </p>
 
           <button
             onClick={() => { setTaps([]); setShapeTaps([]); setFit(null); }}
             disabled={taps.length === 0}
           >
             Clear taps and start over
+          </button>
+
+          {/*
+            Changing mode throws the taps away, because they were tapped to
+            answer a different question — eight beats is not a description of a
+            four-minute song, and a whole song is not a tempo sample. Confirmed
+            rather than silent, since it is the only control here that destroys
+            work.
+          */}
+          <button
+            onClick={() => {
+              if (
+                taps.length > 0 &&
+                !window.confirm('Changing mode clears your taps. Start over?')
+              ) {
+                return;
+              }
+              setTaps([]);
+              setShapeTaps([]);
+              setFit(null);
+              setStep('mode');
+            }}
+          >
+            Change mode — currently {mode === 'quick' ? 'quick' : 'detailed'}
           </button>
           <button onClick={onCancel}>Cancel</button>
         </>
