@@ -290,21 +290,31 @@ export default function AddSong({ onCharted, onCancel }: Props) {
             </p>
           )}
 
+          {/*
+            The label stays the action, disabled or not. It used to swap to
+            "4 more taps", which is a requirement wearing a button's clothes —
+            it reads as though pressing it would produce the taps. The count is
+            already on the tap button, in the meter beneath it, and in the
+            instruction above; a fourth copy of it was not the missing piece.
+          */}
           <button
             className="button--primary"
             onClick={() => makeChart('quick')}
             disabled={!enough}
+            title={enough ? undefined : `Tap at least ${MIN_TAPS} beats first`}
           >
-            {enough
-              ? 'Quick chart — use my taps for the tempo'
-              : `${MIN_TAPS - taps.length} more taps`}
+            Quick chart — use my taps for the tempo
           </button>
           <p className="hint" style={{ fontSize: '0.7rem' }}>
             Arrows across the whole song, evenly. Tap eight beats or eighty — it only
             needs to know where the beat is.
           </p>
 
-          <button onClick={() => makeChart('shape')} disabled={!enough}>
+          <button
+            onClick={() => makeChart('shape')}
+            disabled={!enough}
+            title={enough ? undefined : `Tap at least ${MIN_TAPS} beats first`}
+          >
             Use my tapping as the shape
           </button>
           <p className="hint" style={{ fontSize: '0.7rem' }}>
