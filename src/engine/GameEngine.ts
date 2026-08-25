@@ -52,6 +52,8 @@ export class GameEngine {
   private score: ScoreState = initialScoreState();
   private cursor = 0;
   private completed = false;
+  /** Set when the media ran out before the chart did. */
+  private ended = false;
 
   constructor(clock: GameClock, chart: Chart, options: GameEngineOptions = {}) {
     this.clock = clock;
@@ -90,7 +92,27 @@ export class GameEngine {
    * arrive.
    */
   isOver(): boolean {
-    return this.score.failed || this.isComplete();
+    return this.score.failed || this.isComplete() || this.ended;
+  }
+
+  /**
+   * The music stopped, so the run stops — however many arrows are left.
+   *
+   * Without this a chart that outlives its video deadlocks. The clock stops
+   * advancing when the source is not playing (deliberately: notes must not
+   * expire against a paused video), so arrows past the end are never judged,
+   * `isComplete()` is never true, and the run cannot finish. The player is left
+   * on a frozen screen with no way out.
+   *
+   * The remaining arrows are left UNJUDGED rather than counted as misses.
+   * Accuracy divides by `judgedCount`, so this scores what was actually
+   * playable and nothing else — a chart running longer than its song is a
+   * charting fault, and marking a player down for arrows the video never
+   * reached would be blaming them for it. No completion bonus either: they did
+   * not complete it.
+   */
+  endRun(): void {
+    this.ended = true;
   }
 
   reset(): void {
@@ -98,6 +120,7 @@ export class GameEngine {
     this.score = initialScoreState();
     this.cursor = 0;
     this.completed = false;
+    this.ended = false;
   }
 
   /**

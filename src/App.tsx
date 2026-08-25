@@ -195,6 +195,8 @@ export default function App() {
    * undo — the copy on this browser is, for now, the only copy there is.
    */
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  /** The video ran out before the chart did, so results must not claim a clear. */
+  const [songRanOut, setSongRanOut] = useState(false);
 
   /**
    * Take the room's song — after checking it.
@@ -397,6 +399,15 @@ export default function App() {
       if (clock && engine && phaseRef.current === 'playing') {
         clock.tick();
         present(engine.update());
+        // The video finishing ends the run, whatever the chart still holds.
+        // A chart can outlive its song — a duration read before the metadata
+        // loaded, a generator rounding past the end — and the clock stops when
+        // the source does, so those arrows would never be judged and the run
+        // would never end. The screen simply froze.
+        if (adapterRef.current?.getState() === 'ended' && !engine.isComplete()) {
+          engine.endRun();
+          setSongRanOut(true);
+        }
         // isOver, not isComplete: a failed run stops judging, so the chart
         // never finishes and isComplete would never become true.
         if (engine.isOver()) {
@@ -558,6 +569,7 @@ export default function App() {
   const start = useCallback(async () => {
     setError(null);
     setErrorHint(null);
+    setSongRanOut(false);
     adapterRef.current?.dispose();
     rendererRef.current?.clearEffects();
 
@@ -956,7 +968,13 @@ export default function App() {
         {phase === 'results' && (
           <div className="panel-wrap overlay">
             <div className="panel">
-              <p className="hint">{score.failed ? 'You ran out of health' : 'Cleared'}</p>
+              <p className="hint">
+                {score.failed
+                  ? 'You ran out of health'
+                  : songRanOut
+                    ? 'The song ended before the chart did'
+                    : 'Cleared'}
+              </p>
               <div
                 className="results__grade"
                 style={{ color: score.failed ? 'var(--bad)' : 'var(--pink)' }}

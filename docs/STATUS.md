@@ -100,6 +100,10 @@ timing carries over unchanged because `CatPose` describes intent, not pixels.
 Each of these cost real time. Full write-ups in `PLAYTEST-FINDINGS.md` and
 `SECURITY.md`.
 
+- **Three correct rules can deadlock.** The clock stops when the video stops,
+  completion needs every arrow judged, and a chart can outlive its song — so a
+  run with arrows past the end could never finish. None of the three was wrong
+  alone.
 - **Tapping the tempo is not describing the song.** Forty taps to find a BPM
   were read as the song's structure, so everything after the last tap became a
   skipped passage and a four-minute song charted as thirteen seconds. The two
@@ -121,7 +125,7 @@ Each of these cost real time. Full write-ups in `PLAYTEST-FINDINGS.md` and
 
 | | |
 |---|---|
-| Tests | **1154** across 35 files |
+| Tests | **1158** across 35 files |
 | Contracts | `@neko/protocol` — 657 tests |
 | Engine | `@neko/game-core` — 219 tests |
 | Protocol suite | 25 real-socket tests |

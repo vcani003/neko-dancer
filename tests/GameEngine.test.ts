@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GameEngine } from '../src/engine/GameEngine.ts';
 import { GameClock } from '../src/engine/GameClock.ts';
-import { COMPLETION_BONUS, MAX_HEALTH } from '../src/engine/ScoreSystem.ts';
+import { COMPLETION_BONUS, MAX_HEALTH, accuracy } from '../src/engine/ScoreSystem.ts';
 import { arrow, chartWith, FakeAdapter } from './helpers.ts';
 import type { Lane } from '../src/charts/schema.ts';
 
@@ -249,5 +249,66 @@ describe('GameEngine — every lane works', () => {
     for (const lane of lanes) {
       expect(engine.pressLane(lane, wallNow())?.judgment, lane).toBe('PERFECT');
     }
+  });
+});
+
+/**
+ * A chart that outlives its song.
+ *
+ * The clock stops advancing when the source is not playing — deliberately, so
+ * notes cannot expire against a paused video. But that leaves no answer for
+ * "the video is over and there are arrows left": those arrows are never judged,
+ * `isComplete()` is never true, and the run cannot end. The player is stuck on
+ * a frozen screen.
+ */
+describe('the media ending before the chart does', () => {
+  it('is a deadlock until the run is told the music stopped', () => {
+    const { engine, advance } = setup([arrow('a', 1000), arrow('b', 500_000)]);
+    advance(2000);
+
+    // The first arrow has been and gone; the second is far beyond any video.
+    expect(engine.isOver()).toBe(false);
+
+    engine.endRun();
+    expect(engine.isOver()).toBe(true);
+  });
+
+  it('does not count the arrows the video never reached', () => {
+    const { engine, advance, wallNow } = setup([
+      arrow('a', 1000),
+      ...Array.from({ length: 50 }, (_, i) => arrow(`late${i}`, 300_000 + i * 500)),
+    ]);
+    advance(1000);
+    engine.pressLane('left', wallNow());
+    engine.endRun();
+
+    const score = engine.getScore();
+    // One arrow was playable and it was hit. Accuracy is over what was
+    // reachable — a chart longer than its song is a charting fault, and
+    // marking the player down for it would be blaming them for it.
+    expect(score.judgedCount).toBe(1);
+    expect(score.counts.MISS).toBe(0);
+    expect(accuracy(score)).toBe(1);
+  });
+
+  it('is not a completion', () => {
+    const { engine, advance } = setup([arrow('a', 1000), arrow('b', 500_000)]);
+    advance(2000);
+    engine.endRun();
+
+    // Over, but not completed — so no completion bonus, and results should not
+    // claim the chart was cleared.
+    expect(engine.isOver()).toBe(true);
+    expect(engine.getScore().failed).toBe(false);
+    expect(engine.isComplete()).toBe(false);
+  });
+
+  it('is forgotten on reset, so the next round is not born over', () => {
+    const { engine } = setup([arrow('a', 1000)]);
+    engine.endRun();
+    expect(engine.isOver()).toBe(true);
+
+    engine.reset();
+    expect(engine.isOver()).toBe(false);
   });
 });

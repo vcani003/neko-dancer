@@ -226,6 +226,45 @@ how you get a fourth.
 
 ---
 
+## 7. The song ended and the game froze
+
+**Found by:** Vero, playing a chart longer than its video.
+
+> "if the song / video ends before the last beat, it just gets stuck lol"
+
+Three correct behaviours, deadlocking each other:
+
+- `GameClock.tick()` stops advancing whenever the source is not `playing`. That
+  is deliberate and right — notes must not expire against a paused video.
+- `isComplete()` requires **every** arrow to be judged.
+- `isOver()` is `failed || isComplete()`.
+
+So a chart holding arrows past the end of its video can never finish. Time
+freezes at the video's end, those arrows are never judged, `isComplete()` never
+becomes true, and the run has no way out. The screen simply stops.
+
+Nothing here was a bug on its own, which is why it survived: each rule is
+correct in isolation and none of them covers "the music is over and there is
+chart left".
+
+**Fix.** The media ending ends the run. `GameEngine.endRun()` sets a third
+terminal condition alongside failed and complete.
+
+**The remaining arrows stay unjudged rather than counting as misses.** Accuracy
+divides by `judgedCount`, so the run is scored over what was actually reachable.
+A chart outliving its song is a *charting* fault, and marking the player down
+for arrows the video never got to would be blaming them for it. There is no
+completion bonus either — they did not complete it — and results now say **"the
+song ended before the chart did"** rather than "Cleared", because the previous
+wording congratulated someone for a song that had been cut off.
+
+**How it happens at all:** a duration read before the metadata loaded, a
+generator rounding past the end, or a video that fires `ENDED` a moment early.
+The point of fixing it at the loop rather than at generation is that all three
+produce the same symptom and only one of them is a generator bug.
+
+---
+
 ## Pattern
 
 The first two are the same shape: **a global listener that did not ask where
