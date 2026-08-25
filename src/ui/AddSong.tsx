@@ -33,6 +33,15 @@ type ChartMode = 'quick' | 'shape';
 interface Props {
   onCharted: (chart: Chart) => void;
   onCancel: () => void;
+  /**
+   * Start from an existing song — re-charting rather than adding.
+   *
+   * The link and title come prefilled so nobody has to go and find the URL of a
+   * song already in their library. What comes out is a new version of it, not a
+   * replacement: `store.add` counts versions per author, so an evening of
+   * tapping survives being tapped again.
+   */
+  initial?: { url: string; title: string };
 }
 
 /** Enough taps to be sure, few enough that nobody minds. */
@@ -44,11 +53,11 @@ function formatMs(ms: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
-export default function AddSong({ onCharted, onCancel }: Props) {
+export default function AddSong({ onCharted, onCancel, initial }: Props) {
   const [step, setStep] = useState<Step>('url');
   const [mode, setMode] = useState<ChartMode>('quick');
-  const [url, setUrl] = useState('');
-  const [title, setTitle] = useState('');
+  const [url, setUrl] = useState(initial?.url ?? '');
+  const [title, setTitle] = useState(initial?.title ?? '');
   const [error, setError] = useState<string | null>(null);
   const [taps, setTaps] = useState<number[]>([]);
   /**
@@ -211,8 +220,9 @@ export default function AddSong({ onCharted, onCancel }: Props) {
       {step === 'url' && (
         <>
           <p className="hint">
-            Paste a YouTube link. The video plays here and you tap the beat — its
-            audio is never downloaded or read, so the rhythm has to come from you.
+            {initial
+              ? 'Re-charting this song. Tapping it again makes a new version — the one you have now is kept.'
+              : 'Paste a YouTube link. The video plays here and you tap the beat — its audio is never downloaded or read, so the rhythm has to come from you.'}
           </p>
           <input
             value={url}

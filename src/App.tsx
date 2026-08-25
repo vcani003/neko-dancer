@@ -197,6 +197,8 @@ export default function App() {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   /** The video ran out before the chart did, so results must not claim a clear. */
   const [songRanOut, setSongRanOut] = useState(false);
+  /** Set when 'adding' means re-charting an existing song rather than a new one. */
+  const [rechartFrom, setRechartFrom] = useState<{ url: string; title: string } | null>(null);
 
   /**
    * Take the room's song — after checking it.
@@ -276,18 +278,6 @@ export default function App() {
     return [roomChart, ...allCharts];
   }, [roomChart, allCharts, activeKey]);
 
-  /**
-   * Admin unlocks editing a song's shape.
-   *
-   * Gated because a plan belongs to the SONG rather than to a player: everyone
-   * in a room plays the same chart, so editing one edits it for everybody.
-   */
-  const isAdmin = useMemo(
-    () =>
-      new URLSearchParams(window.location.search).get('admin') === '1' ||
-      localStorage.getItem('neko.admin') === '1',
-    [],
-  );
   const durationMs = useMemo(() => chartDurationMs(chart), [chart]);
 
   const stageRef = useRef<HTMLDivElement>(null);
@@ -821,13 +811,41 @@ export default function App() {
                 })}
               </div>
 
-              <button onClick={() => setPhase('adding')}>Add a song from YouTube</button>
+              <button
+                onClick={() => { setRechartFrom(null); setPhase('adding'); }}
+              >
+                Add a song from YouTube
+              </button>
 
-              {isAdmin && (
-                <button onClick={() => setPhase('editing')}>
-                  Edit this song's shape
+              {/*
+                Both act on the chart currently selected above, rather than
+                crowding another two controls onto every row.
+
+                No longer behind admin. That gate made sense when editing a plan
+                rewrote the single chart everyone shared; since charts gained
+                versions, regenerating produces a v2 and leaves the original
+                alone — so it was guarding against something that can no longer
+                happen.
+              */}
+              {active.chart.song.playback.provider === 'youtube' && (
+                <button
+                  onClick={() => {
+                    const playback = active.chart.song.playback;
+                    if (playback.provider !== 'youtube') return;
+                    setRechartFrom({
+                      url: `https://www.youtube.com/watch?v=${playback.videoId}`,
+                      title: active.chart.song.title,
+                    });
+                    setPhase('adding');
+                  }}
+                >
+                  Re-chart “{active.chart.song.title}” — tap it again
                 </button>
               )}
+
+              <button onClick={() => setPhase('editing')}>
+                Edit this song's shape — skips, pacing, tempo
+              </button>
 
               {room.connection === 'open' && room.room && (
                 <div className="readybar">
@@ -924,13 +942,15 @@ export default function App() {
         {phase === 'adding' && (
           <div className="overlay">
             <AddSong
-              onCancel={() => setPhase('menu')}
+              {...(rechartFrom ? { initial: rechartFrom } : {})}
+              onCancel={() => { setRechartFrom(null); setPhase('menu'); }}
               onCharted={(newChart) => {
                 // `add` rather than `save`: a re-tap of a song you already
                 // charted becomes your v2 instead of destroying your v1.
                 void store.add(newChart, name || undefined).then((stored) => {
                   refreshCharts();
                   setSelectedId(stored.id);
+                  setRechartFrom(null);
                   setPhase('menu');
                 });
               }}
