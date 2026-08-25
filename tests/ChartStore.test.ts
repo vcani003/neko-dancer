@@ -25,6 +25,30 @@ const chartFor = (playback: Chart['song']['playback'], arrows = 1): Chart => ({
   })),
 });
 
+/**
+ * A minimal `localStorage`, rather than a whole DOM.
+ *
+ * Shared rather than defined inside one `describe`, because a suite that
+ * happens to run after another one and inherits its global is a suite that
+ * breaks when somebody reorders the file.
+ */
+function installLocalStorage(): void {
+  const entries = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      get length() {
+        return entries.size;
+      },
+      key: (i: number) => [...entries.keys()][i] ?? null,
+      getItem: (k: string) => entries.get(k) ?? null,
+      setItem: (k: string, v: string) => entries.set(k, v),
+      removeItem: (k: string) => entries.delete(k),
+      clear: () => entries.clear(),
+    },
+  });
+}
+
 describe('song keys', () => {
   /** A chart belongs to the thing it was written against, not to its title. */
   it('keys a song by its playback source', () => {
@@ -178,24 +202,7 @@ describe('storing charts', () => {
  * fixes.
  */
 describe('charts stored by an older build', () => {
-  beforeEach(() => {
-    const entries = new Map<string, string>();
-    // A minimal localStorage rather than a whole DOM: the store touches five
-    // methods, and the migration is about key shapes, not about a browser.
-    Object.defineProperty(globalThis, 'localStorage', {
-      configurable: true,
-      value: {
-        get length() {
-          return entries.size;
-        },
-        key: (i: number) => [...entries.keys()][i] ?? null,
-        getItem: (k: string) => entries.get(k) ?? null,
-        setItem: (k: string, v: string) => entries.set(k, v),
-        removeItem: (k: string) => entries.delete(k),
-        clear: () => entries.clear(),
-      },
-    });
-  });
+  beforeEach(installLocalStorage);
 
   const writeLegacy = (videoId: string, authoredBy?: string) => {
     localStorage.setItem(
@@ -283,5 +290,58 @@ describe('charts carrying a grid offset', () => {
   it('leaves a chart with no offset completely alone', () => {
     const chart = withOffset(0);
     expect(absoluteNoteTimes(chart)).toBe(chart);
+  });
+});
+
+/**
+ * Deleting one chart.
+ *
+ * The interesting case is versions: several charts of one song sit under keys
+ * that differ only in a suffix, so a delete that matched on the song rather
+ * than the chart would take an evening of tapping with it — and there is no
+ * undo, because for now the copy in this browser is the only copy there is.
+ */
+describe('removing a chart', () => {
+  beforeEach(installLocalStorage);
+
+  it('leaves other versions of the same song alone', async () => {
+    const store = new MemoryChartStore();
+    const v1 = await store.add(chartFor({ provider: 'youtube', videoId: 'v' }, 1), 'Vero');
+    const v2 = await store.add(chartFor({ provider: 'youtube', videoId: 'v' }, 2), 'Vero');
+
+    await store.remove(v1.id);
+
+    expect(await store.get(v1.id)).toBeNull();
+    expect((await store.get(v2.id))?.chart.arrows).toHaveLength(2);
+    expect(await store.list()).toHaveLength(1);
+  });
+
+  it('leaves another author’s chart of the same song alone', async () => {
+    const store = new MemoryChartStore();
+    const mine = await store.add(chartFor({ provider: 'youtube', videoId: 'v' }), 'Vero');
+    const theirs = await store.add(chartFor({ provider: 'youtube', videoId: 'v' }), 'Friend');
+
+    await store.remove(mine.id);
+
+    expect(await store.get(mine.id)).toBeNull();
+    expect(await store.get(theirs.id)).not.toBeNull();
+  });
+
+  it('does nothing for an id that is not there', async () => {
+    const store = new MemoryChartStore();
+    const kept = await store.add(chartFor({ provider: 'youtube', videoId: 'v' }));
+    await store.remove('youtube:v#nobody#v9');
+    expect(await store.list()).toHaveLength(1);
+    expect(await store.get(kept.id)).not.toBeNull();
+  });
+
+  it('removes it from storage, not just from the listing', async () => {
+    const store = new LocalChartStore();
+    const stored = await store.add(chartFor({ provider: 'youtube', videoId: 'gone' }), 'Vero');
+    expect(localStorage.getItem(`neko.chart.${stored.id}`)).toBeTruthy();
+
+    await store.remove(stored.id);
+    expect(localStorage.getItem(`neko.chart.${stored.id}`)).toBeNull();
+    expect(await store.list()).toHaveLength(0);
   });
 });

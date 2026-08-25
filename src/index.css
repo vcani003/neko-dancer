@@ -256,3 +256,17 @@ kbd {
 .panel--error h2 { font-size: 1rem; margin: 0 0 0.5rem; color: var(--bad); }
 .board__blocked { color: var(--bad); font-size: 0.62rem; letter-spacing: 0.06em; }
 .board--results { margin: 12px 0 4px; width: 100%; }
+
+/* A song row and its delete control. The row stays a button; the × sits beside
+   it rather than inside, because a button inside a button is invalid markup and
+   browsers resolve it in ways nobody intends. */
+.songrow-wrap { display: flex; align-items: stretch; gap: 6px; }
+.songrow-wrap > .songrow { flex: 1; min-width: 0; }
+.songrow__x {
+  flex: 0 0 auto; width: 34px; padding: 0;
+  color: var(--muted); font-size: 1.1rem; line-height: 1;
+}
+.songrow__x:hover { color: var(--bad); border-color: var(--bad); }
+.songrow__confirm { display: flex; align-items: center; gap: 6px; }
+.songrow__confirm .hint { white-space: nowrap; }
+.songrow__danger { color: var(--bad); border-color: var(--bad); }

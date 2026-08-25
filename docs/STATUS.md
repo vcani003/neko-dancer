@@ -121,7 +121,7 @@ Each of these cost real time. Full write-ups in `PLAYTEST-FINDINGS.md` and
 
 | | |
 |---|---|
-| Tests | **1150** across 35 files |
+| Tests | **1154** across 35 files |
 | Contracts | `@neko/protocol` — 657 tests |
 | Engine | `@neko/game-core` — 219 tests |
 | Protocol suite | 25 real-socket tests |

@@ -188,6 +188,13 @@ export default function App() {
    * Charts are small JSON, which is what makes that free.
    */
   const [roomChart, setRoomChart] = useState<StoredChart | null>(null);
+  /**
+   * The chart whose delete has been asked for but not confirmed.
+   *
+   * Two steps on purpose. A chart is an evening of tapping and there is no
+   * undo — the copy on this browser is, for now, the only copy there is.
+   */
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   /**
    * Take the room's song — after checking it.
@@ -229,6 +236,23 @@ export default function App() {
       void store.save(record).then(refreshCharts).catch(() => {});
     },
     [store, refreshCharts, allCharts],
+  );
+
+  const deleteChart = useCallback(
+    (record: StoredChart) => {
+      setPendingDelete(null);
+      void store
+        .remove(record.id)
+        .then(() => {
+          // Fall back to the built-in rather than to nothing, so the menu is
+          // never pointing at a chart that no longer exists.
+          setSelectedId((current) => (current === record.id ? tutorial.id : current));
+          setRoomChart((current) => (current?.id === record.id ? null : current));
+          refreshCharts();
+        })
+        .catch(() => {});
+    },
+    [store, refreshCharts, tutorial.id],
   );
 
   const active = useMemo(
@@ -724,9 +748,13 @@ export default function App() {
               <div className="songlist">
                 {songChoices.map((record) => {
                   const c = record.chart;
+                  // The built-in ships with the game; there is nothing to
+                  // delete and no way to get it back.
+                  const removable = record.author !== 'built-in';
+                  const confirming = pendingDelete === record.id;
                   return (
+                    <div key={record.id} className="songrow-wrap">
                     <button
-                      key={record.id}
                       className={`songrow ${record.id === activeKey ? 'is-active' : ''}`}
                       onClick={() => {
                         // Clear first so the click feels instant; if we are in
@@ -755,6 +783,28 @@ export default function App() {
                         </span>
                       </span>
                     </button>
+
+                    {removable && !confirming && (
+                      <button
+                        className="songrow__x"
+                        title={`Delete "${c.song.title}"`}
+                        aria-label={`Delete ${c.song.title}`}
+                        onClick={() => setPendingDelete(record.id)}
+                      >
+                        ×
+                      </button>
+                    )}
+
+                    {confirming && (
+                      <span className="songrow__confirm">
+                        <span className="hint">Delete for good?</span>
+                        <button className="songrow__danger" onClick={() => deleteChart(record)}>
+                          Delete
+                        </button>
+                        <button onClick={() => setPendingDelete(null)}>Keep</button>
+                      </span>
+                    )}
+                    </div>
                   );
                 })}
               </div>
