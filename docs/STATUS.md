@@ -94,11 +94,21 @@ system. Four layers compose — world transform, locomotion, gesture, expression
 and three of them already exist in some form (`Wander.ts`, `CatPose.ts`,
 `depthScale`/`y`-sorting in `LaneRenderer`).
 
-Not started, and **no art is needed to start**. Phases 1–6 (click-to-move, the
-walk cycle, idles, blinking, expression as a layer, emotes) are all procedural
-on the existing rig; the sprite swap is Phase 7. Building the systems first
-means tuning takes a reload rather than a regenerated part library, and the
-timing carries over unchanged because `CatPose` describes intent, not pixels.
+**The first art sheet arrived on 27 August**, and a standing cat is assembled
+from it: `scripts/cut-parts.py` cuts twelve parts out of the sheet and measures
+them, `CatSprite` stands them up, `/cat.html` shows it in the real renderer.
+
+It is a **pose sheet rather than the part library** the brief asks for, and
+`ART-BRIEF.md` §14 records exactly what that costs — faces baked into three
+heads, limbs drawn already-curved, four finished tails instead of three
+segments. None of it blocks standing; all of it blocks posing. Four more parts
+would convert it into a rig, and §14 names them.
+
+Nothing else changes. §12 still holds — avatar phases 1–6 (click-to-move, the
+walk cycle, idles, blinking, expression as a layer, emotes) need no art and are
+still the better thing to build first, and `CatDancer` still draws every
+animated cat in the game. What the sheet buys is that the swap is no longer
+hypothetical: the cut, the assembly and the layer order are proven.
 
 ---
 
@@ -140,9 +150,10 @@ Each of these cost real time. Full write-ups in `PLAYTEST-FINDINGS.md` and
 
 | | |
 |---|---|
-| Tests | **1261** across 41 files |
+| Tests | **1299** across 42 files |
 | Contracts | `@neko/protocol` — 657 tests |
 | Engine | `@neko/game-core` — 219 tests |
 | Playback | `@neko/web` — 103 tests, zero of them reaching YouTube |
 | Protocol suite | 25 real-socket tests |
 | Bundle | ~513 KB, one chunk |
+| Cat parts | 12 PNGs, 936 KB, cut and measured by one script |

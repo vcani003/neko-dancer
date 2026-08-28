@@ -1,0 +1,90 @@
+{
+  "head-open": {
+    "width": 373,
+    "height": 344
+  },
+  "head-closed": {
+    "width": 347,
+    "height": 343
+  },
+  "head-happy": {
+    "width": 351,
+    "height": 344
+  },
+  "torso": {
+    "width": 291,
+    "height": 310
+  },
+  "arm-left": {
+    "width": 127,
+    "height": 224,
+    "anchor": [
+      0.6417,
+      0.1987
+    ]
+  },
+  "arm-right": {
+    "width": 125,
+    "height": 224,
+    "anchor": [
+      0.36,
+      0.1964
+    ]
+  },
+  "leg-left": {
+    "width": 105,
+    "height": 254,
+    "anchor": [
+      0.519,
+      0.1909
+    ]
+  },
+  "leg-right": {
+    "width": 105,
+    "height": 254,
+    "anchor": [
+      0.4714,
+      0.1909
+    ]
+  },
+  "tail-curl": {
+    "width": 268,
+    "height": 164,
+    "tail": {
+      "axis": "horizontal",
+      "startThickness": 66.7,
+      "endThickness": 91.8,
+      "baseAtStart": false
+    }
+  },
+  "tail-raised": {
+    "width": 213,
+    "height": 243,
+    "tail": {
+      "axis": "vertical",
+      "startThickness": 61.0,
+      "endThickness": 130.4,
+      "baseAtStart": false
+    }
+  },
+  "tail-wave": {
+    "width": 278,
+    "height": 196,
+    "tail": {
+      "axis": "horizontal",
+      "startThickness": 59.4,
+      "endThickness": 58.9,
+      "baseAtStart": true
+    }
+  },
+  "tail-arc": {
+    "width": 244,
+    "height": 178,
+    "tail": {
+      "axis": "horizontal",
+      "startThickness": 53.9,
+      "endThickness": 91.9,
+      "baseAtStart": false
+    }
+  }
+}

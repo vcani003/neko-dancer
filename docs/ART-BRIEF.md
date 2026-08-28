@@ -375,6 +375,44 @@ and is the whole reason to have written this before the art exists.
 Make the art when the movement already looks right and you want it to look
 good.
 
+## 14. What actually arrived, and what it costs
+
+**27 August 2026.** A first sheet exists: grey tabby, twelve parts, generated
+in one batch. `scripts/cut-parts.py` cuts it into `public/cat/*.png` and
+measures what it produced; `CatSprite` stands the cat up from those parts, and
+`/cat.html` shows it in the real renderer.
+
+It is a **pose sheet**, not the part library §3 asks for. That is not a
+complaint — it stands up beautifully, and seeing it in the renderer is worth
+more than a library that does not exist yet. But the differences are load
+bearing, so they are written down rather than discovered later:
+
+| §3 asks for | The sheet has | What it costs |
+|---|---|---|
+| `head` without a face, `face` as its own layer | Three heads with faces baked in | Expression is a **head swap**, three states, and cannot combine with anything. Every new expression is a whole head |
+| One `arm` and one `leg`, drawn straight | Two curved arms, two straight legs | They hang correctly and **rotate badly** — §4 rule 2, a part drawn already-bent bends twice |
+| `tail_base` · `tail_mid` · `tail_tip` | Four finished tail curves | `CatPose.tail` is continuous from -1 to 1 and cannot interpolate between four discrete shapes. A swayed tail would snap |
+| 20% transparent padding | Tight bounds | Nothing, here. Pixi does not clip a rotating sprite to its texture, so padding buys nothing this renderer needs. Recorded because §4 rule 4 says otherwise and the deviation should be a decision |
+
+**What it got right, and this is the one that usually goes wrong:** every limb
+has the rounded cap §4 rule 1 demands. The ball is there, measured, and in
+`catParts.ts` as `ballAnchor`. A flat-cut shoulder would have made the whole
+sheet unusable for anything that moves.
+
+**Where this leaves the phases.** §12 still holds — phases 1–6 need no art, and
+building them procedurally is still the better order. Nothing about a standing
+sprite changes that; `CatDancer` still draws every animated cat in the game.
+What the sheet buys is that phase 7 is no longer hypothetical: the cut, the
+assembly and the layer order are proven, and the next sheet can be asked for in
+terms of what this one is missing rather than in the abstract.
+
+**What to ask for next**, in priority order: a head without a face plus a
+separate face layer; one straight arm and one straight leg in a neutral hang;
+three tail segments. That is four parts, and it converts the standing cat into
+a rig.
+
+---
+
 ## 13b. Open — decide before the art is final
 
 **Per-player colour.** The procedural cat takes `CatColours` and recolours for
@@ -388,6 +426,14 @@ it is already visible in multiplayer today. Two options:
 
 The greyscale route costs nothing extra at generation time and keeps the option
 open, so it is the one to take unless the style depends on baked colour.
+
+**Overtaken by §14, partly.** The sheet that arrived is a baked grey tabby, not
+greyscale, so the clean version of the first option is gone for these parts.
+Tinting still *works* — the fur is desaturated (around `#8c8075`), so a
+multiply tint shifts it convincingly rather than muddying it — but every player
+gets a warm, muted version of their colour instead of the clear one a greyscale
+base would give. Good enough to tell four cats apart, and worth asking for
+greyscale on the next sheet rather than re-cutting this one.
 
 ---
 

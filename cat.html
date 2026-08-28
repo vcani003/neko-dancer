@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Standing cat — sprite parts</title>
+    <style>
+      body { margin: 0; background: #0a0510; color: #e8dfe6;
+             font: 13px/1.5 ui-monospace, monospace; }
+      #stage { width: 100vw; height: 78vh; }
+      #stage canvas { display: block; }
+      #controls { display: flex; flex-wrap: wrap; gap: 1.5rem; padding: 1rem 1.5rem; }
+      .group { display: flex; align-items: center; gap: .4rem; }
+      .group > span { opacity: .55; margin-right: .3rem; }
+      button { font: inherit; padding: .3rem .7rem; cursor: pointer;
+               background: #1d1424; color: #e8dfe6;
+               border: 1px solid #3a2c44; border-radius: 4px; }
+      button:hover { background: #2a1d34; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div id="controls"></div>
+    <script type="module" src="/src/render/catPreview.ts"></script>
+  </body>
+</html>
