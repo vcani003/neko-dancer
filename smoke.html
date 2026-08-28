@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Playback smoke test — Phase 2 gate</title>
+    <style>
+      body { font: 14px/1.5 ui-monospace, monospace; margin: 2rem; max-width: 60rem; }
+      h1 { font-size: 1.1rem; }
+      p { color: #555; max-width: 46rem; }
+      .controls { display: flex; gap: .5rem; margin: 1rem 0; }
+      input { flex: 1; padding: .5rem; font: inherit; }
+      button { padding: .5rem 1rem; font: inherit; }
+      #stage { width: 480px; height: 270px; background: #111; margin: 1rem 0; }
+      #stage iframe { width: 100%; height: 100%; }
+      .row { padding: .15rem 0; white-space: pre-wrap; }
+      .row--pass { color: #0a7d28; }
+      .row--fail { color: #b00020; font-weight: 700; }
+      .row--info { color: #666; }
+    </style>
+  </head>
+  <body>
+    <h1>Playback smoke test</h1>
+    <p>
+      The one place the real YouTube is allowed. Everything else in the playback
+      layer runs on fakes — no automated test may require YouTube — so this page
+      exists to check the assumptions those fakes are built on. Run it once per
+      change to the playback layer, and paste the result into the phase notes.
+    </p>
+    <p>
+      Open it by hostname (<code>http://something.local:5180/smoke.html</code>),
+      never by IP: YouTube refuses restriction-bearing videos on a numeric origin.
+    </p>
+    <div class="controls">
+      <input id="url" value="https://www.youtube.com/watch?v=dQw4w9WgXcQ" />
+      <button id="run">Run</button>
+    </div>
+    <div id="stage"></div>
+    <div id="log"></div>
+    <script type="module" src="/apps/web/src/playback/smoke.ts"></script>
+  </body>
+</html>

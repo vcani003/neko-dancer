@@ -421,6 +421,46 @@ Phase 1.
 
 </details>
 
+### ADR-009 — `PlaybackAdapter` is §11's shape plus three members. **ACCEPTED**
+
+**Decision.** The interface built in Phase 2 is §11's — `load(source)`, `play`,
+`pause`, `seek`, `currentTimeMs`, `isReady`, `isPlaying` — plus `state()`,
+`durationMs()` and `dispose()`. Recorded as an ADR rather than written into the
+code quietly, because the rule of the road is that a contract change goes
+through Architecture, and a justification in a comment is a change nobody
+agreed to.
+
+**Why `state()`.** §11 offers `isPlaying(): boolean`, which has to answer *no*
+for four different situations: paused, buffering, ended, and never started.
+Three of them need different behaviour, and two of them have already cost a
+round:
+
+- A **buffering** video reported as playing keeps the clock advancing while the
+  picture is frozen, and notes expire against arrows nobody can see. `MediaClock`
+  is fed `mediaTimeMs` and cannot tell a stalled source from a coarse one except
+  by waiting — the adapter *can* tell, and throwing that away here would be
+  discarding the only cheap signal there is.
+- An **ended** video is how a run escapes the deadlock in `PLAYTEST-FINDINGS.md`
+  §7: the clock stops when the source stops, completion needs every arrow judged,
+  and a chart can outlive its song. `GameEngine.endRun()` exists to break that,
+  and it needs something to fire it.
+
+**Why `durationMs()`.** §11 puts `durationMs?` on `MediaSource`, where it is
+optional and — for YouTube — unknowable at resolve time: oEmbed does not report
+length. The length exists only after the player has loaded, so the question has
+to be askable *of the adapter*, and it has to be able to answer "not yet". A
+duration guessed before the metadata loaded is one of the three ways a chart
+comes to outlive its song, so the type is `number | null` and zero is never
+reported as a real length.
+
+**Why `dispose()`.** Not a design point, a leak. A player that is dropped without
+being destroyed keeps an iframe, its timers and its network activity alive.
+
+**What did NOT change.** Game Core still takes a number and never imports any of
+this (ADR-007). The additions are on the app side of that line, which is why they
+cost nothing in the engine and are enforced by the import-graph gate rather than
+promised.
+
 ### Open — a game-design call, not a correctness one
 
 **A masher cannot fail.** The old engine charged −3 health for a press with
@@ -539,13 +579,26 @@ import of React, YouTube, `ws` or the database anywhere in the package —
 **enforced by a test that reads the package's own import graph**, not by
 convention.
 
-### Phase 2 — Playback (parallel)
+### Phase 2 — Playback (parallel) — **DONE, less the smoke run**
 
-`MediaProvider` + `PlaybackAdapter` + `YouTubeAdapter` per §11. Keep
-`checkVideoPlayable`.
+`MediaProvider` + `PlaybackAdapter` + `YouTubeAdapter` per §11, amended by
+ADR-009. `checkVideoPlayable` kept. All of it in `apps/web/src/playback/`, where
+ADR-004 puts it; the prototype's copies at `src/playback/` stay until the app
+itself moves.
 
 **Gate:** one YouTube smoke test — load, play, `currentTimeMs()` advances, pause,
 seek, error detected. Everything else runs on the fake.
+
+The smoke test **cannot be a test file** — Part 4 forbids any automated test that
+requires YouTube — so it is `smoke.html`, a page run by a person against the real
+player, printing pass/fail per check. Built and serving; not yet run against a
+real video. Until it has been, the fakes' assumptions about YouTube's clock,
+about `CUED` actually arriving, and about where an error code shows up are
+assumptions.
+
+**Landed:** 103 tests. `FakePlaybackAdapter` is the deterministic source
+everything downstream is proven against, and a gate test reads the playback
+tests off disk to enforce that none of them reaches the network.
 
 ### Phase 3 — Data and auth (parallel)
 

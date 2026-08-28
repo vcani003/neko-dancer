@@ -9,29 +9,34 @@ decisions live in full in its Part 1. This page is the index and the checklist.
 
 ## Now
 
-> ### ✅ P0 done — needs a two-machine playtest
-> A detour before Phase 2, because a game nobody can play together does not get
-> playtested. See `MULTIPLAYER-GAPS.md`.
+> ### ✅ Phase 2 landed — the smoke gate has not been run
+> The playback layer is built and proven on fakes. The one check that needs the
+> real YouTube is a page, not a test, and needs a person.
 
 | | |
 |---|---|
-| ✅ | Gate the Play button — no independent start while in a room |
-| ✅ | Shared ranked results — everyone sees everyone, live while others finish |
-| ✅ | Back to the lobby after a round, un-readied |
-| ✅ | **Rung 5: a round played together, confirmed synchronised** |
-| ✅ | Everyone's cat moves on everyone's screen |
+| ✅ | `MediaProvider` + `YouTubeProvider` — a pasted link becomes a `MediaSource` |
+| ✅ | `PlaybackAdapter` per §11, amended by ADR-009 |
+| ✅ | `YouTubeAdapter` — `load(source)`, so a queue swaps videos instead of players |
+| ✅ | `FakePlaybackAdapter` — the deterministic source everything downstream uses |
+| ✅ | `checkVideoPlayable` kept, and now testable without a browser |
+| ✅ | A gate test that reads the playback tests off disk: none of them reaches the network |
+| ⬜ | **The smoke run.** `npm run dev`, then `smoke.html` by hostname, press Run |
 
-P0 is not "passing" until that last line is ticked. Rungs 1–3 are green and have
-been green through every failure so far — see `DIAGNOSIS-media.md`.
+Phase 2 is not "passing" until that last line is ticked — it is the only thing
+that checks the fakes against the real player, and the fakes are what every
+later phase is proven on.
 
-**Next up: P1** — prepare-before-countdown (so nobody starts mid-buffer),
-`roundAbort`, and showing disconnects.
-
-Also open, and now worth deciding: **browser-level tests**. 1146 tests could not
+**Also open, and now worth deciding: browser-level tests.** 1146 tests could not
 see the Play-button bug, because the multiplayer suite drives raw sockets and
-the bug was a button. Playwright with one browser context per player would
-catch that class. It cannot catch real clock skew between two machines — two
-contexts on one machine share a clock — so it replaces rung 5a, not 5b.
+the bug was a button. Playwright with one browser context per player would catch
+that class. It cannot catch real clock skew between two machines — two contexts
+on one machine share a clock — so it replaces rung 5a, not 5b. It would also let
+the smoke page above run itself, which is the second argument for it.
+
+**P1 is still unstarted** — prepare-before-countdown, `roundAbort`, showing
+disconnects. See `MULTIPLAYER-GAPS.md`, and note that Phase 7 rebuilds all of it
+on the new contracts.
 
 ---
 
@@ -41,7 +46,7 @@ contexts on one machine share a clock — so it replaces rung 5a, not 5b.
 |---|---|---|---|
 | ✅ | **0 — Freeze & contract** | Contracts compile, imported by nothing, Validation's tests pass | 657 tests |
 | ✅ | **1 — Game Core** | Windows verified on a fake clock; BPM on noisy taps; import-graph gate | 219 tests |
-| ⬜ | **2 — Playback** | One YouTube smoke test; everything else on the fake | |
+| 🟡 | **2 — Playback** | One YouTube smoke test; everything else on the fake | 103 tests, smoke not run |
 | ⬜ | **3 — Data & auth** | Round-trip per entity; published revisions provably immutable; Save ≠ Fork | |
 | ⬜ | **4 — Single player** | A full run against a fake adapter from a scripted input sequence | |
 | ⬜ | **5 — Chart creation** | Same taps → same chart; publishing twice leaves v1 byte-identical | |
@@ -49,7 +54,7 @@ contexts on one machine share a clock — so it replaces rung 5a, not 5b.
 | ⬜ | **7 — Multiplayer** | Full protocol suite + the failure matrix + a real two-machine round | |
 | ⬜ | **8 — Creator tools** | Manual editing, holds, patterns, multiple timing points | |
 
-Phases 2 and 3 can run in parallel; both are unblocked.
+Phase 3 is unblocked and is the next one to start. Phase 4 needs Phase 3.
 
 ---
 
@@ -67,6 +72,7 @@ Full reasoning in `IMPLEMENTATION-PLAN.md` Part 1.
 | **006** | `MediaSource` has no id; identity is `Song.id` | Two identities for one piece of media answers no question well |
 | **007** | Game Core takes `mediaTimeMs`, never a `PlaybackAdapter` | An engine given a number cannot call `play()` and is tested by passing `10_000` |
 | **008** | Chart schema v1 abandoned, no migration | Charts were exported by hand first; the backup gets one manual reshape |
+| **009** | `PlaybackAdapter` is §11 plus `state()`, `durationMs()`, `dispose()` | `isPlaying()` has to answer *no* for buffering, ended and never-started, and two of those already cost a round |
 
 ### Open — waiting on a decision
 
@@ -76,7 +82,8 @@ Full reasoning in `IMPLEMENTATION-PLAN.md` Part 1.
 | Should a masher be able to *fail*? Today they clear at 14% accuracy | `MULTIPLAYER-GAPS.md`, API.md §3 |
 | How is the game served long-term — mDNS, tunnel, or a real deployment? | `DIAGNOSIS-media.md` |
 | Sprite cats: tint greyscale parts per player, or accept one shared look? | `ART-BRIEF.md` §13b — deferred, procedural recolours for free |
-| Set up Playwright? 1146 tests could not see the Play-button bug | `MULTIPLAYER-GAPS.md` |
+| Set up Playwright? 1146 tests could not see the Play-button bug — and it would let `smoke.html` run itself | `MULTIPLAYER-GAPS.md` |
+| Does `MediaClock`'s 250 ms resync threshold match YouTube's real step? The smoke page measures it | ADR-009, `smoke.html` |
 
 ---
 
@@ -118,6 +125,14 @@ Each of these cost real time. Full write-ups in `PLAYTEST-FINDINGS.md` and
 - **The tests were correct while the game was broken**, three times. Focus,
   hit-testing and message ordering are decided by the browser.
 - **`npx tsc --noEmit` does not check this project.** Use `npm run build`.
+- **A gate that scans source has to tell code from the description of code.**
+  The determinism gate is one of the files it reads, and every banned pattern
+  appears in it by definition — they *are* the patterns. It failed on itself
+  until it blanked strings, comments and regex literals first. The same lesson
+  `packages/game-core`'s import-graph test learned against prose.
+- **A YouTube URL in a test is not a test that reaches YouTube.** The first
+  version of that gate banned the addresses and flagged a parser's own fixtures.
+  A gate that flags correct tests is a gate someone switches off; ban the calls.
 
 ---
 
@@ -125,8 +140,9 @@ Each of these cost real time. Full write-ups in `PLAYTEST-FINDINGS.md` and
 
 | | |
 |---|---|
-| Tests | **1158** across 35 files |
+| Tests | **1261** across 41 files |
 | Contracts | `@neko/protocol` — 657 tests |
 | Engine | `@neko/game-core` — 219 tests |
+| Playback | `@neko/web` — 103 tests, zero of them reaching YouTube |
 | Protocol suite | 25 real-socket tests |
 | Bundle | ~513 KB, one chunk |
