@@ -122,6 +122,11 @@ Stories are mostly **states you cannot stage**:
 Delete it?"* defaulting to yes) · `DuplicateFound` (§3b: this song already has a
 chart — use it, or chart your own).
 
+Chart editing stories (when Phase 8 exists): a fixture revision, a
+playhead, the same chart as the Staging timeline and as the
+`LaneRenderer` slice. See `CHART-EDITOR.md`. Do not add Storybook
+only to have a gallery.
+
 ### Failure — `apps/web/src/ui/feedback/`
 
 The reason for all of this. One story per `MediaFailure` code, the error

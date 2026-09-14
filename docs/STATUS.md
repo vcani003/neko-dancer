@@ -4,6 +4,7 @@ The at-a-glance board. Phases live in full in `IMPLEMENTATION-PLAN.md` Part 3;
 decisions live in full in its Part 1. This page is the index and the checklist.
 
 **Updated as work lands. If it disagrees with the code, it is wrong — say so.**
+Ideas that are not in flight live in `BACKLOG.md`.
 
 ---
 
@@ -11,12 +12,15 @@ decisions live in full in its Part 1. This page is the index and the checklist.
 
 > ### 🟡 Three pages — Home, Public/Staging, Create
 > `npm run api` (5182) + `npm run dev` (5180). Open
-> `http://<hostname>.local:5180/`. Home is the shelf (drafts +
+> `http://<hostname>.local:5180/`. Friends off the LAN:
+> `npm run tunnel` (laptop stays awake; URL is a secret). Later
+> host is Fly or Railway — `docs/DEPLOY.md`. Home is the shelf (drafts +
 > published). Public shuffles published charts, cap 6, chat on.
 > Songs auto-start after a 10 s buffer. Mid-song join is spectate.
 > Staging is Ready + a pausable YouTube player.
-> Create pastes a YouTube URL on one page; Draft and Publish both land
-> in Staging. Publish is a request until Staging confirms. The stage is
+> Create pastes a YouTube URL on one page; Generate and test, Draft, and
+> Publish all land in Staging. Staging can go Back or Regen the phrases.
+> Hits play a short drum marker. Publish is a request until Staging confirms. The stage is
 > still `LaneRenderer`. `ROOM-LOOPS.md` is pages and behaviour.
 > `ROOM-THEME.md` is chrome, tokens, and the cat/bunny plates. The old
 > prototype lives at `/prototype.html`. Hosted Postgres and the Phase 2
@@ -66,7 +70,7 @@ on the new contracts.
 | 🟡 | **5 — Chart creation** | Same taps → same chart; publishing twice leaves v1 byte-identical | Create page + Staging |
 | ⬜ | **6 — Global browsing** | Search by song, artist, author, difficulty, tags | |
 | ⬜ | **7 — Multiplayer** | Full protocol suite + the failure matrix + a real two-machine round | |
-| ⬜ | **8 — Creator tools** | Manual editing, holds, patterns, multiple timing points | |
+| ⬜ | **8 — Creator tools** | Manual editing, holds, patterns, multiple timing points | Staging workshop: lanes + YouTube, CapCut bin, one-row timeline — `CHART-EDITOR.md` |
 
 The three pages are in. Phase 5's Create screen exists; the advanced editor does not. Hosted Postgres and `smoke.html` are still ahead.
 

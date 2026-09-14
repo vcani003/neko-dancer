@@ -166,7 +166,7 @@ open Create
        either type it
        or tap space while the video plays; BPM from those taps
   → Advanced accordion      visible, disabled, not a second page
-  → Draft | Publish | Exit
+  → Generate and test | Draft | Publish | Exit
 ```
 
 ### One page
@@ -205,12 +205,18 @@ An accordion labelled Advanced Beatmap settings. It is **disabled**.
 It is on the page so the later tools (holds, extra timing points, hand
 edits) have a door. Opening it does nothing for now.
 
-### The three actions
+The editor *is* Staging unlocked (`CHART-EDITOR.md`): lanes beside
+YouTube, a CapCut-style asset bin, a one-row timeline under both.
+Public never gets that chrome. The lanes stay `LaneRenderer` — the
+zoomed-in slice of the same chart.
+
+### The actions
 
 | Action | Persist | Playable in Public? | Next screen |
 |---|---|---|---|
 | **Exit** | Nothing new | — | Home |
 | **Draft** | Yes, status `draft` | No | **Staging** |
+| **Generate and test** | Yes, status `draft` | No | **Staging**, with Back and Regen |
 | **Publish** | Yes, status `pending` (not public yet) | No, not until Staging says so | **Staging** |
 
 Publish shows a note **before** it fires:
@@ -239,9 +245,10 @@ land from Draft or Publish
        YouTube pause works — this is a workshop
   → after results
        Ready or Play again
-       if you came from Draft:
+       Regen beatmap   (new seed, same video and timing, stay here)
+       Back to Create  (same URL, start, BPM)
+       if you came from Draft or Generate and test:
             stay draft
-            Exit to Create or Home
        if you came from Publish:
             Publish to public   (now it is actually published)
             or keep as draft    (changed your mind)
