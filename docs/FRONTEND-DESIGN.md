@@ -141,6 +141,9 @@ file. That is fine for a prototype and it will not survive four contributors.
 
 ### Where it should go
 
+Room extras — plate URL, secondary, glow — are specified in `ROOM-THEME.md`.
+They reassign the names below. They do not twin them.
+
 Tokens in one file, consumed by both CSS and stories.
 
 **Colour.** Keep the existing palette; give it roles. `--bg`, `--panel`,

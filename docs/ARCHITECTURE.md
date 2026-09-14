@@ -18,8 +18,8 @@ why).
 | **Server** | 3 `.mjs` files, ~980 lines, plain JavaScript on purpose |
 | **Tests** | **244**, across 14 suites |
 | **Bundle** | ~513 KB, one chunk |
-| **Backend** | Node HTTP + WebSocket. No database, no accounts yet |
-| **Persistence** | `localStorage` only. A server-side chart library is in progress |
+| **Backend** | Prototype still `server/*.mjs`. New work is `@neko/server` |
+| **Persistence** | Drizzle + Postgres (PGlite in tests). Prototype `localStorage` is not authoritative |
 | **Deployed** | No. Runs on the host's machine, reachable on the local network |
 
 **Recreation of Nekodancer (Atelier 801).** The original is deprecated. The name

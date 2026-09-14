@@ -2,9 +2,8 @@
  * Cats moving about the room.
  *
  * Between rounds the avatars wander rather than standing in a row, which is
- * most of what makes a lobby feel like a place instead of a list. During a
- * round they stop and dance where they are — moving while playing would pull
- * the eye away from the arrows.
+ * most of what makes a lobby feel like a place instead of a list. A click
+ * steers the local figure; they keep walking and still strike a pose.
  *
  * Pure functions over a position and a clock, so the movement can be tested.
  * "It looks about right" is not a claim anyone can check later.
@@ -22,6 +21,8 @@ export interface Walker {
   chosenAtMs: number;
   /** Facing: -1 left, 1 right. Kept so a cat does not moonwalk. */
   facing: -1 | 1;
+  /** A click (or later, a net update) picked this target. Do not auto-wander. */
+  steered?: boolean;
 }
 
 /** Room coordinates are 0–1 on both axes, like everything else here. */
@@ -70,6 +71,15 @@ export function createWalker(seed: string, nowMs: number): Walker {
   return { position: { ...start }, target: start, chosenAtMs: nowMs, facing: 1 };
 }
 
+/** Walk here and stay. Used for click-to-move on the local player. */
+export function steer(walker: Walker, point: Point, nowMs: number): Walker {
+  const target = {
+    x: clamp(point.x, ROOM_BOUNDS.minX, ROOM_BOUNDS.maxX),
+    y: clamp(point.y, ROOM_BOUNDS.minY, ROOM_BOUNDS.maxY),
+  };
+  return { ...walker, target, chosenAtMs: nowMs, steered: true };
+}
+
 export interface WalkOptions {
   /** Frozen cats stay put — during a round, dancing beats strolling. */
   frozen?: boolean;
@@ -93,7 +103,7 @@ export function step(
 
   let { target, chosenAtMs, facing } = walker;
 
-  if (nowMs - chosenAtMs >= WANDER_INTERVAL_MS) {
+  if (!walker.steered && nowMs - chosenAtMs >= WANDER_INTERVAL_MS) {
     const stepIndex = Math.floor(nowMs / WANDER_INTERVAL_MS);
     target = wanderTarget(seed, stepIndex);
     chosenAtMs = nowMs;
@@ -110,7 +120,7 @@ export function step(
     y: clamp(walker.position.y + dy * t, ROOM_BOUNDS.minY, ROOM_BOUNDS.maxY),
   };
 
-  return { position, target, chosenAtMs, facing };
+  return { position, target, chosenAtMs, facing, steered: walker.steered };
 }
 
 function clamp(value: number, min: number, max: number): number {

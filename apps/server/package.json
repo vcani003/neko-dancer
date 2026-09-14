@@ -2,5 +2,16 @@
   "name": "@neko/server",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.3.16",
+    "@neko/protocol": "*",
+    "drizzle-orm": "^0.44.7"
+  }
 }

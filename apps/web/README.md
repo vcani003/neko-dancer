@@ -2,11 +2,22 @@
 
 The React client. Owned by the Client agent.
 
-**What is here so far: the playback layer** (Phase 2). The application itself —
-UI, chart creation, input handling, rendering, multiplayer client state — is
-still at the repository root in `src/`, and moves here as its phase lands.
-Relocating a working application is its own reviewable change and does not
-belong in the same commit as a layer it will later import.
+**What is here so far: playback** (Phase 2) and **the single-player run**
+(Phase 4). The React screens, input handling, rendering and multiplayer
+client state are still at the repository root in `src/`.
+
+## `src/play/` — Phase 4
+
+`PlaySession` is the order: list published charts, choose one, preload the
+adapter, wait out a countdown (ADR-002), feed the adapter's media time into
+Game Core, collect a `RoundResult`.
+
+The Phase 4 gate is `tests/play-session.test.ts`: a scripted perfect run
+on the seeded tutorial against `FakePlaybackAdapter` scores 61.
+
+```
+npm run play
+```
 
 ## `src/playback/` — §11, ADR-006, ADR-007, ADR-009
 

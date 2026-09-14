@@ -16,6 +16,9 @@ public/audio/
 # history is permanent.
 charts/
 
+# On-disk PGlite used by `npm run data`. Local proof, not source.
+apps/server/.data/
+
 # Mutation-testing scratch. Validation copies src/ here, breaks it on purpose to
 # prove its tests actually catch the defect, then deletes it. Transient by
 # design — it was committed once by a test run that raced the agent creating it.

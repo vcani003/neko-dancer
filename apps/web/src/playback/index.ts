@@ -26,3 +26,5 @@ export type { VideoCheck, CheckOptions } from './checkVideoPlayable.ts';
 
 export { FakePlaybackAdapter, fakeMediaSource } from './FakePlaybackAdapter.ts';
 export type { FakePlaybackOptions } from './FakePlaybackAdapter.ts';
+
+export { RealtimeAdapter } from './RealtimeAdapter.ts';

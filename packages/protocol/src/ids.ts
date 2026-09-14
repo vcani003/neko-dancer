@@ -28,6 +28,7 @@ export type SongId = Branded<'SongId'>;
 export type BeatmapId = Branded<'BeatmapId'>;
 export type RevisionId = Branded<'RevisionId'>;
 export type PlaylistId = Branded<'PlaylistId'>;
+export type ScoreId = Branded<'ScoreId'>;
 export type RoomId = Branded<'RoomId'>;
 /** Identifies a socket's participant within one room. Never a `UserId`. */
 export type ParticipantId = Branded<'ParticipantId'>;
@@ -80,7 +81,14 @@ export function toRoomId(input: string): RoomId | null {
  * type-checked and then returned null for every valid room id, for ever,
  * silently — a boundary written the obvious way was dead code.
  */
-export type UuidId = UserId | SongId | BeatmapId | RevisionId | PlaylistId | ParticipantId;
+export type UuidId =
+  | UserId
+  | SongId
+  | BeatmapId
+  | RevisionId
+  | PlaylistId
+  | ScoreId
+  | ParticipantId;
 
 /**
  * Turn an untrusted string into a branded id, or fail.

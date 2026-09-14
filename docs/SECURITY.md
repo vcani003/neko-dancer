@@ -173,9 +173,12 @@ rather than a patch: judgment has to happen on the server, which means the
 server needs the chart and the input events rather than the result. Worth doing
 before any score is published anywhere, and not before.
 
-**No authentication.** Anyone can claim any name, including one already in use.
-There is nothing to steal yet, because there are no accounts — but the moment
-there are, impersonation stops being cosmetic. See §6.
+**Cookie identity, not login.** The server mints a UUID, stores it in an
+httpOnly `neko.identity` cookie, and treats the display name as a label on
+that id. Same browser, same person. New browser, new person. Two people
+named "Vero" are two rows. There is no email and no identity provider —
+stealing the cookie *is* stealing the person, which is why it is httpOnly
+and why a public deployment still needs TLS (§6).
 
 **Network exposure.** The server binds every interface by default, because the
 entire point is that other people can join. That also means **anyone who can
@@ -194,10 +197,14 @@ open internet as it stands.
 
 Named so they are decisions rather than omissions:
 
-- No TLS. Traffic on the LAN is plaintext, including chat.
-- No persistence, so nothing to leak yet — and nothing to lose.
+- No TLS. Traffic on the LAN is plaintext, including the identity cookie.
+- Persistence exists (`@neko/server`: users, charts, self-reported scores).
+  Tests run on PGlite. A hosted Postgres will hold the same rows, and then
+  there is something to leak and something to lose.
 - No moderation tools: no block, mute, report or kick.
 - No audit log of who did what in a room.
+- No account deletion path yet. §6 asked for one before the first account;
+  cookie identity is already an account.
 
 ---
 

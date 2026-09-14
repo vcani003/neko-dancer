@@ -1,13 +1,34 @@
 # @neko/server
 
-**Empty until Phase 3.** The API, auth, Postgres/Supabase access, rooms, chat,
-queue, ready state and the WebSocket server move here from `server/`.
+Persistence and cookie identity. Phase 3.
 
-It becomes **TypeScript** in the move, which is the point: it can then import
-`@neko/protocol` directly. The current server is plain `.mjs` and cannot, which
-is why validation lived in two places and had to be tested against itself.
+Drizzle talks to Postgres. Tests use **PGlite** — the same dialect, in
+process, no network, no leftover state. Production later is a hosted
+Postgres (Supabase or otherwise); that wiring is a deploy concern, not
+the Phase 3 gate, and this package does not require a live project to
+typecheck or to test.
 
-Drizzle schema and migrations live at `src/db/` inside this workspace — ADR-004
-refuses them a workspace of their own.
+HTTP, rooms, chat, queue and the play loop are not here yet. They move
+in from `server/` in later phases and call `Store`.
 
-Owned by the Data and Realtime agents.
+```
+src/db/        schema + in-memory client
+src/store.ts   Song → Beatmap → ChartRevision, plus users, library, scores
+src/identity/  httpOnly cookie; the id is the person, the name is a label
+src/seed.ts    one published click-track chart for MVP 1
+```
+
+`localStorage` is not authoritative anywhere in this package. A gate test
+reads the source to keep it that way.
+
+To see rows survive a process dying — not a test file, a file on disk:
+
+```
+npm run data         # writes apps/server/.data/pglite and prints the seed
+npm run data         # same ids. that is persistence.
+npm run data:reset   # delete the file and start over
+```
+
+`npm run serve` is the old prototype. It does not open this database.
+
+Owned by the Data agent. Realtime arrives in Phase 7.

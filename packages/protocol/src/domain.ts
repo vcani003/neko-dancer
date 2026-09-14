@@ -13,10 +13,12 @@
  * | Beatmap       | someone's reading of it     | many per song         |
  * | ChartRevision | the actual notes and timing | many per beatmap      |
  */
+import type { RoundResult } from './judgments.ts';
 import type {
   BeatmapId,
   PlaylistId,
   RevisionId,
+  ScoreId,
   SongId,
   UserId,
 } from './ids.ts';
@@ -217,6 +219,19 @@ export interface User {
 }
 
 /**
+ * A finished run, as stored. The `result` is still a claim — system design
+ * §25 — and this row exists so a person can see their own history, not so a
+ * public board can rank anyone.
+ */
+export interface StoredScore {
+  readonly id: ScoreId;
+  readonly userId: UserId;
+  readonly revisionId: RevisionId;
+  readonly result: RoundResult;
+  readonly createdAtIso: string;
+}
+
+/**
  * Settings that belong to a person and their machine, not to a chart. §13, §29.
  *
  * `calibrationMs` is the second of the three offsets and the only one stored
@@ -277,4 +292,6 @@ export interface BeatmapSummary {
   durationMs: number;
   thumbnailUrl?: string;
   publishedAtIso?: string;
+  /** Drafts appear on Home. Only `published` enters the Public shuffle. */
+  status: BeatmapStatus;
 }

@@ -11,7 +11,12 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck:protocol": "tsc -p packages/protocol/tsconfig.json --noEmit"
+    "typecheck:protocol": "tsc -p packages/protocol/tsconfig.json --noEmit",
+    "data": "node --experimental-strip-types apps/server/scripts/inspect.ts",
+    "data:import": "node --experimental-strip-types apps/server/scripts/import-v1.ts",
+    "data:reset": "rm -rf apps/server/.data",
+    "play": "node --experimental-strip-types apps/web/scripts/play-once.ts",
+    "api": "node --experimental-strip-types apps/server/scripts/serve-api.ts"
   },
   "dependencies": {
     "pixi.js": "^8.20.0",

@@ -9,23 +9,37 @@ decisions live in full in its Part 1. This page is the index and the checklist.
 
 ## Now
 
-> ### ✅ Phase 2 landed — the smoke gate has not been run
-> The playback layer is built and proven on fakes. The one check that needs the
-> real YouTube is a page, not a test, and needs a person.
+> ### 🟡 Three pages — Home, Public/Staging, Create
+> `npm run api` (5182) + `npm run dev` (5180). Open
+> `http://<hostname>.local:5180/`. Home is the shelf (drafts +
+> published). Public shuffles published charts, cap 6, chat on.
+> Songs auto-start after a 10 s buffer. Mid-song join is spectate.
+> Staging is Ready + a pausable YouTube player.
+> Create pastes a YouTube URL on one page; Draft and Publish both land
+> in Staging. Publish is a request until Staging confirms. The stage is
+> still `LaneRenderer`. `ROOM-LOOPS.md` is pages and behaviour.
+> `ROOM-THEME.md` is chrome, tokens, and the cat/bunny plates. The old
+> prototype lives at `/prototype.html`. Hosted Postgres and the Phase 2
+> smoke run are still ahead.
 
 | | |
 |---|---|
-| ✅ | `MediaProvider` + `YouTubeProvider` — a pasted link becomes a `MediaSource` |
-| ✅ | `PlaybackAdapter` per §11, amended by ADR-009 |
-| ✅ | `YouTubeAdapter` — `load(source)`, so a queue swaps videos instead of players |
-| ✅ | `FakePlaybackAdapter` — the deterministic source everything downstream uses |
-| ✅ | `checkVideoPlayable` kept, and now testable without a browser |
-| ✅ | A gate test that reads the playback tests off disk: none of them reaches the network |
-| ⬜ | **The smoke run.** `npm run dev`, then `smoke.html` by hostname, press Run |
-
-Phase 2 is not "passing" until that last line is ticked — it is the only thing
-that checks the fakes against the real player, and the fakes are what every
-later phase is proven on.
+| ✅ | Drizzle schema: User, Song, Beatmap, ChartRevision, LibraryEntry, StoredScore |
+| ✅ | Round-trip per entity on PGlite |
+| ✅ | Published revision 1 stays byte-identical after revision 2 |
+| ✅ | Save = reference, Fork = new beatmap |
+| ✅ | httpOnly `neko.identity` cookie — the id is the person, the name is a label |
+| ✅ | Seeded click-track chart for MVP 1 play |
+| ✅ | Gate: no `localStorage` in `@neko/server` |
+| ✅ | `PlaySession` — catalog + adapter + engine, wall time injected |
+| ✅ | Gate: scripted fake-adapter run scores 61 on the tutorial |
+| ✅ | Miss-all path and self-reported score write |
+| ✅ | HTTP that exposes the store (`GET /api/me`, library, playable, scores) |
+| ✅ | A playable React screen that calls `PlaySession` (`LaneRenderer`) |
+| ✅ | Home / Public room / Create / Staging — `ROOM-LOOPS.md` |
+| ✅ | Play-room visual system — `ROOM-THEME.md` (tokens, plates, component bans) |
+| ⬜ | Hosted Postgres at deploy time |
+| ⬜ | Phase 2 smoke run — still a person, still `smoke.html` |
 
 **Also open, and now worth deciding: browser-level tests.** 1146 tests could not
 see the Play-button bug, because the multiplayer suite drives raw sockets and
@@ -47,14 +61,14 @@ on the new contracts.
 | ✅ | **0 — Freeze & contract** | Contracts compile, imported by nothing, Validation's tests pass | 657 tests |
 | ✅ | **1 — Game Core** | Windows verified on a fake clock; BPM on noisy taps; import-graph gate | 219 tests |
 | 🟡 | **2 — Playback** | One YouTube smoke test; everything else on the fake | 103 tests, smoke not run |
-| ⬜ | **3 — Data & auth** | Round-trip per entity; published revisions provably immutable; Save ≠ Fork | |
-| ⬜ | **4 — Single player** | A full run against a fake adapter from a scripted input sequence | |
-| ⬜ | **5 — Chart creation** | Same taps → same chart; publishing twice leaves v1 byte-identical | |
+| 🟡 | **3 — Data & auth** | Round-trip per entity; published revisions provably immutable; Save ≠ Fork | 40 tests, HTTP on 5182 |
+| 🟡 | **4 — Single player** | A full run against a fake adapter from a scripted input sequence | session + Home / rooms |
+| 🟡 | **5 — Chart creation** | Same taps → same chart; publishing twice leaves v1 byte-identical | Create page + Staging |
 | ⬜ | **6 — Global browsing** | Search by song, artist, author, difficulty, tags | |
 | ⬜ | **7 — Multiplayer** | Full protocol suite + the failure matrix + a real two-machine round | |
 | ⬜ | **8 — Creator tools** | Manual editing, holds, patterns, multiple timing points | |
 
-Phase 3 is unblocked and is the next one to start. Phase 4 needs Phase 3.
+The three pages are in. Phase 5's Create screen exists; the advanced editor does not. Hosted Postgres and `smoke.html` are still ahead.
 
 ---
 
@@ -150,10 +164,11 @@ Each of these cost real time. Full write-ups in `PLAYTEST-FINDINGS.md` and
 
 | | |
 |---|---|
-| Tests | **1299** across 42 files |
+| Tests | **1350** across 55 files |
 | Contracts | `@neko/protocol` — 657 tests |
 | Engine | `@neko/game-core` — 219 tests |
-| Playback | `@neko/web` — 103 tests, zero of them reaching YouTube |
+| Playback | `@neko/web` — 114 tests, zero of them reaching YouTube |
+| Data | `@neko/server` — 40 tests, PGlite, no network |
 | Protocol suite | 25 real-socket tests |
 | Bundle | ~513 KB, one chunk |
 | Cat parts | 12 PNGs, 936 KB, cut and measured by one script |

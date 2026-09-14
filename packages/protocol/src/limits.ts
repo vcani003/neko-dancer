@@ -54,6 +54,15 @@ export const ROUND_GRACE_MS = 90_000;
 export const COUNTDOWN_MS = 3000;
 
 /**
+ * Public (and Staging) wait this long after a room can start, then play.
+ * Not gated on Ready. Late joiners during a song spectate.
+ */
+export const ROOM_START_BUFFER_MS = 10_000;
+
+/** How long results stay up before the next buffer starts. */
+export const RESULTS_HOLD_MS = 4_000;
+
+/**
  * How long the room waits for everyone to answer "can you play this?".
  *
  * The same hazard as ROUND_GRACE_MS, one state earlier and easy to miss: a

@@ -1,0 +1,189 @@
+.nav {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 0 1.4rem;
+}
+.nav__mark {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: inherit;
+  text-decoration: none;
+  width: auto;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.nav__mark span { color: var(--pink); }
+.nav__links { display: flex; gap: 0.45rem; }
+.nav__links a {
+  width: auto;
+  text-decoration: none;
+  padding: 6px 10px;
+}
+.nav__links a.is-here {
+  border-color: var(--pink);
+  background: rgba(244, 114, 182, 0.16);
+}
+
+.door {
+  max-width: 36rem;
+  margin: 0 auto;
+  padding: 0 1.1rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.door h1 { font-size: 2.1rem; margin: 0; letter-spacing: -0.03em; }
+.door h1 span { color: var(--pink); }
+.door h2 {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0.4rem 0 0;
+}
+.door .hint { margin: 0; }
+
+.who { display: flex; gap: 0.5rem; align-items: center; }
+.who label { color: var(--muted); font-size: 0.75rem; }
+.who input { width: 12rem; }
+
+.cast__buttons { display: flex; gap: 0.4rem; }
+.cast__buttons button { width: auto; }
+.cast__buttons button.is-active {
+  border-color: var(--pink);
+  background: rgba(244, 114, 182, 0.16);
+}
+
+.songlist { display: flex; flex-direction: column; gap: 6px; }
+.songrow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: left;
+  width: 100%;
+}
+.songrow__title { font-size: 0.95rem; font-weight: 600; }
+.songrow__meta { font-size: 0.72rem; color: var(--muted); font-weight: 400; }
+.badge {
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 3px 8px;
+}
+.badge--draft { color: var(--gold); border-color: #5a4a20; }
+
+.roomcard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.roomcard__name { font-weight: 700; }
+.roomcard__meta { font-size: 0.75rem; color: var(--muted); }
+.roomcard a, .roomcard button { width: auto; }
+a.button--primary {
+  background: var(--pink);
+  border-color: var(--pink);
+  color: #2a0a1b;
+  padding: 11px 14px;
+  font-size: 13px;
+}
+
+.error {
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid var(--bad);
+  color: var(--bad);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.note {
+  background: rgba(244, 114, 182, 0.1);
+  border: 1px solid var(--pink);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.actions button, .actions a { width: auto; text-decoration: none; }
+
+.field-row {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: 0.6rem;
+  align-items: center;
+}
+.field-row label { color: var(--muted); font-size: 0.78rem; }
+
+.embed {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.embed iframe { width: 100%; height: 100%; border: 0; }
+
+.tap-pad {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-align: center;
+}
+.tap-pad:focus { border-color: var(--pink); color: var(--text); outline: none; }
+
+.advanced {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.advanced summary { font-weight: 600; color: var(--text); }
+
+.app--solo { grid-template-columns: 1fr; }
+.readybar {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 100;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.readybar button { width: auto; }
+.leave {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 100;
+  width: auto;
+  text-decoration: none;
+  font-size: var(--type-body);
+}
+.app[data-room]:not(.app--solo) .leave { display: none; }

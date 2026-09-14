@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./playback": "./src/playback/index.ts"
+    "./playback": "./src/playback/index.ts",
+    "./play": "./src/play/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p ../../tsconfig.app.json --noEmit"

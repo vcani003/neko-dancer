@@ -4,6 +4,7 @@ import {
   WANDER_INTERVAL_MS,
   createWalker,
   depthScale,
+  steer,
   step,
   wanderTarget,
 } from '../src/render/Wander.ts';
@@ -88,6 +89,24 @@ describe('step', () => {
   });
 
   /** During a round the cats dance where they are; strolling pulls the eye. */
+  it('still walks a steered figure when the rest of the room is frozen', () => {
+    const steered = steer(
+      { ...createWalker('a', 0), position: { x: 0.2, y: 0.7 } },
+      { x: 0.8, y: 0.7 },
+      0,
+    );
+    const moved = step(steered, 'a', 100, 80, { frozen: !steered.steered });
+    expect(moved.position.x).toBeGreaterThan(steered.position.x);
+  });
+
+  it('keeps a steered target instead of picking a new wander point', () => {
+    const start = createWalker('a', 0);
+    const steered = steer(start, { x: 0.8, y: 0.8 }, 0);
+    const later = step(steered, 'a', WANDER_INTERVAL_MS + 200, 16);
+    expect(later.target).toEqual(steered.target);
+    expect(later.steered).toBe(true);
+  });
+
   it('stands still when frozen', () => {
     const walker = { ...createWalker('a', 0), target: { x: 0.9, y: 0.9 } };
     expect(step(walker, 'a', 5000, 500, { frozen: true })).toBe(walker);
